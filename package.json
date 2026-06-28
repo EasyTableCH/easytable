@@ -1,0 +1,14 @@
+{
+  "name": "easytable",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:pos": "npm run dev -w apps/pos-shell",
+    "build:pos": "npm run build -w apps/pos-shell"
+  }
+}
