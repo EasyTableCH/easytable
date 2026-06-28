@@ -240,6 +240,32 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
     });
   }
 
+  function decreaseBasketLine(lineId: string) {
+    setBasketLines((current) =>
+      current.flatMap((line) => {
+        if (line.id !== lineId) {
+          return [line];
+        }
+
+        if (line.quantity <= 1) {
+          return [];
+        }
+
+        return [
+          {
+            ...line,
+            quantity: line.quantity - 1,
+            line_total: line.unit_total * (line.quantity - 1),
+          },
+        ];
+      }),
+    );
+  }
+
+  function removeBasketLine(lineId: string) {
+    setBasketLines((current) => current.filter((line) => line.id !== lineId));
+  }
+
   return (
     <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f6f7fb] text-slate-950">
       {showTopRegion ? (
@@ -338,7 +364,12 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
           </div>
         </div>
 
-        <BasketPanel lines={basketLines} total={basketTotal} />
+        <BasketPanel
+          lines={basketLines}
+          total={basketTotal}
+          onDecreaseLine={decreaseBasketLine}
+          onRemoveLine={removeBasketLine}
+        />
       </section>
 
       <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">

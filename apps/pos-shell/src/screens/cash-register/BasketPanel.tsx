@@ -1,4 +1,4 @@
-import { ReceiptTextIcon } from "lucide-react";
+import { MinusIcon, ReceiptTextIcon, Trash2Icon } from "lucide-react";
 
 import { formatChf } from "../../lib/money";
 import type { BasketLine } from "../../lib/pos-types";
@@ -6,9 +6,16 @@ import type { BasketLine } from "../../lib/pos-types";
 type BasketPanelProps = {
   lines: BasketLine[];
   total: number;
+  onDecreaseLine: (lineId: string) => void;
+  onRemoveLine: (lineId: string) => void;
 };
 
-export function BasketPanel({ lines, total }: BasketPanelProps) {
+export function BasketPanel({
+  lines,
+  total,
+  onDecreaseLine,
+  onRemoveLine,
+}: BasketPanelProps) {
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
@@ -42,6 +49,20 @@ export function BasketPanel({ lines, total }: BasketPanelProps) {
                   <p className="shrink-0 text-sm font-black text-slate-950">
                     {formatChf(line.line_total)}
                   </p>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white text-xs font-black uppercase text-slate-600 transition active:scale-[0.98] active:bg-slate-100"
+                    onClick={() => onDecreaseLine(line.id)}
+                  >
+                    <MinusIcon className="size-4" />
+                  </button>
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-md border border-red-100 bg-red-50 text-xs font-black uppercase text-red-700 transition active:scale-[0.98] active:bg-red-100"
+                    onClick={() => onRemoveLine(line.id)}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </button>
                 </div>
               </div>
             ))}
