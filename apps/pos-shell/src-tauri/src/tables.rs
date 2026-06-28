@@ -1,9 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::State;
 
-use crate::db::{migrate_database, open_database};
-use crate::seeds::seed_table_layout;
+use crate::db::DbState;
 
 #[derive(Serialize)]
 pub(crate) struct TableLayout {
@@ -57,10 +56,8 @@ struct TableLayoutTable {
 }
 
 #[tauri::command]
-pub(crate) fn list_table_layout(app: AppHandle) -> Result<TableLayout, String> {
-    let connection = open_database(&app)?;
-    migrate_database(&connection)?;
-    seed_table_layout(&connection)?;
+pub(crate) fn list_table_layout(state: State<DbState>) -> Result<TableLayout, String> {
+    let connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
 
     let tenant = connection
         .query_row(

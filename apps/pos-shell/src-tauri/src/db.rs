@@ -1,11 +1,20 @@
 use rusqlite::Connection;
 use serde::Serialize;
-use std::{fs, path::PathBuf};
-use tauri::{AppHandle, Manager};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::Mutex,
+};
+use tauri::{AppHandle, Manager, State};
 
 use crate::seeds::{
     seed_products, seed_table_layout, seed_tax_codes, seed_variant_group_items, seed_variant_groups,
 };
+
+/// Shared SQLite connection – wrapped in a Mutex so every Tauri command
+/// serialises access through the same single connection, preventing
+/// SQLITE_BUSY / "database is locked" races between concurrent commands.
+pub(crate) struct DbState(pub Mutex<Connection>);
 
 #[derive(Serialize)]
 pub(crate) struct PosDatabaseInfo {
@@ -35,8 +44,39 @@ pub(crate) fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 pub(crate) fn open_database(app: &AppHandle) -> Result<Connection, String> {
     let path = database_path(app)?;
-    Connection::open(path).map_err(|error| format!("Could not open SQLite database: {error}"))
+    let conn = Connection::open(path)
+        .map_err(|e| format!("Could not open SQLite database: {e}"))?;
+
+    // Set busy_timeout via the C API first (before any SQL) so it is active
+    // for every subsequent statement on this connection.
+    conn.busy_timeout(std::time::Duration::from_millis(5000))
+        .map_err(|e| format!("Could not set SQLite busy timeout: {e}"))?;
+
+    // WAL mode is NOT used here: we share a single Mutex<Connection> across
+    // all Tauri commands, so concurrency is handled at the Rust level. WAL
+    // would require an exclusive file-header write which can fail on Windows.
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|e| format!("Could not configure SQLite connection: {e}"))?;
+
+    Ok(conn)
 }
+
+
+/// Open the database, run migrations + seeds, then return the ready-to-use
+/// connection so the caller can store it as shared application state.
+pub(crate) fn setup_database(app: &AppHandle) -> Result<Connection, String> {
+    let conn = open_database(app)?;
+
+    migrate_database(&conn)?;
+    seed_table_layout(&conn)?;
+    seed_tax_codes(&conn)?;
+    seed_products(&conn)?;
+    seed_variant_groups(&conn)?;
+    seed_variant_group_items(&conn)?;
+
+    Ok(conn)
+}
+
 
 pub(crate) fn migrate_database(connection: &Connection) -> Result<(), String> {
     connection
@@ -356,16 +396,22 @@ fn add_column_if_missing(
     Ok(())
 }
 
+
 #[tauri::command]
-pub(crate) fn initialize_pos_database(app: AppHandle) -> Result<PosDatabaseInfo, String> {
-    let connection = open_database(&app)?;
-    migrate_database(&connection)?;
+pub(crate) fn initialize_pos_database(
+    app: AppHandle,
+    state: State<DbState>,
+) -> Result<PosDatabaseInfo, String> {
+    let conn = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
+
+    // Run migrations and seeds through the already-open shared connection.
+    migrate_database(&conn)?;
     let (seeded_tenants, seeded_locations, seeded_floors, seeded_areas, seeded_tables) =
-        seed_table_layout(&connection)?;
-    let seeded_tax_codes = seed_tax_codes(&connection)?;
-    let seeded_products = seed_products(&connection)?;
-    let seeded_variant_groups = seed_variant_groups(&connection)?;
-    let seeded_variant_group_items = seed_variant_group_items(&connection)?;
+        seed_table_layout(&conn)?;
+    let seeded_tax_codes = seed_tax_codes(&conn)?;
+    let seeded_products = seed_products(&conn)?;
+    let seeded_variant_groups = seed_variant_groups(&conn)?;
+    let seeded_variant_group_items = seed_variant_group_items(&conn)?;
     let path = database_path(&app)?;
 
     Ok(PosDatabaseInfo {

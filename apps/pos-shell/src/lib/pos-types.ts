@@ -78,6 +78,18 @@ export type CreatedOrderSnapshot = {
   continued_existing_order: boolean;
 };
 
+export type MockPaymentMethod = "CASH" | "CARD_MANUAL";
+
+export type CompletedMockPayment = {
+  order_id: string;
+  order_number: string;
+  payment_id: string;
+  payment_method: MockPaymentMethod | string;
+  amount: number;
+  status: "COMPLETED" | string;
+  paid_at: number;
+};
+
 export type OpenTableOrderBasket = {
   order_id: string;
   order_number: string;

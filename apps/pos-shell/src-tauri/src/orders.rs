@@ -1,11 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::State;
 
-use crate::db::{migrate_database, open_database};
-use crate::seeds::{
-    seed_products, seed_table_layout, seed_tax_codes, seed_variant_group_items, seed_variant_groups,
-};
+use crate::db::DbState;
 use crate::util::{calculate_included_tax, scoped_id};
 
 #[derive(Serialize)]
@@ -99,19 +96,44 @@ pub(crate) struct CreatedOrderSnapshot {
     continued_existing_order: bool,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct CompleteMockPaymentRequest {
+    lines: Vec<CreateOrderSnapshotLine>,
+    table_context: Option<CreateOrderSnapshotTableContext>,
+    payment_method: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct CompletedMockPayment {
+    order_id: String,
+    order_number: String,
+    payment_id: String,
+    payment_method: String,
+    amount: i64,
+    status: String,
+    paid_at: i64,
+}
+
 struct OpenOrder {
     id: String,
     order_number: String,
 }
 
+struct SavedOrderSnapshot {
+    id: String,
+    order_number: String,
+    subtotal: i64,
+    tax_total: i64,
+    total: i64,
+    continued_existing_order: bool,
+}
+
 #[tauri::command]
 pub(crate) fn get_open_table_order_basket(
-    app: AppHandle,
+    state: State<DbState>,
     table_id: String,
 ) -> Result<Option<OpenTableOrderBasket>, String> {
-    let connection = open_database(&app)?;
-    migrate_database(&connection)?;
-    seed_table_layout(&connection)?;
+    let connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
 
     let open_order = connection
         .query_row(
@@ -237,7 +259,7 @@ pub(crate) fn get_open_table_order_basket(
 
 #[tauri::command]
 pub(crate) fn create_order_snapshot(
-    app: AppHandle,
+    state: State<DbState>,
     request: CreateOrderSnapshotRequest,
 ) -> Result<CreatedOrderSnapshot, String> {
     validate_order_snapshot_request(&request)?;
@@ -246,18 +268,114 @@ pub(crate) fn create_order_snapshot(
         .as_ref()
         .ok_or_else(|| "Cannot create a table order snapshot without table context.".to_string())?;
 
-    let mut connection = open_database(&app)?;
-    migrate_database(&connection)?;
-    seed_table_layout(&connection)?;
-    seed_tax_codes(&connection)?;
-    seed_products(&connection)?;
-    seed_variant_groups(&connection)?;
-    seed_variant_group_items(&connection)?;
+    let mut connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
 
     let now = crate::util::current_timestamp_ms();
     let transaction = connection
         .transaction()
         .map_err(|error| format!("Could not start order transaction: {error}"))?;
+    let saved_order = save_table_order_snapshot(&transaction, &request, now)?;
+
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not commit order snapshot: {error}"))?;
+
+    Ok(CreatedOrderSnapshot {
+        id: saved_order.id,
+        order_number: saved_order.order_number,
+        status: "OPEN".to_string(),
+        payment_status: "UNPAID".to_string(),
+        subtotal: saved_order.subtotal,
+        tax_total: saved_order.tax_total,
+        total: saved_order.total,
+        created_at: now,
+        table_id: Some(table_context.table_id.clone()),
+        table_name: Some(table_context.table_name.clone()),
+        continued_existing_order: saved_order.continued_existing_order,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn complete_mock_payment(
+    state: State<DbState>,
+    request: CompleteMockPaymentRequest,
+) -> Result<CompletedMockPayment, String> {
+    validate_mock_payment_request(&request)?;
+
+    let mut connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
+
+    let now = crate::util::current_timestamp_ms();
+    let transaction = connection
+        .transaction()
+        .map_err(|error| format!("Could not start mock payment transaction: {error}"))?;
+    let order_request = CreateOrderSnapshotRequest {
+        lines: request.lines,
+        table_context: request.table_context,
+    };
+    let saved_order = save_table_order_snapshot(&transaction, &order_request, now)?;
+    let payment_id = scoped_id("pay", now, 0);
+    let payment_method = request.payment_method.clone();
+
+    // Mock payment: this only records a successful local payment.
+    // No terminal, Wallee, acquirer or cash drawer integration is called here yet.
+    transaction
+        .execute(
+            "
+            INSERT INTO payments (
+              id, order_id, amount, method, status, provider, provider_transaction_id,
+              provider_status, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, 'COMPLETED', 'MOCK', NULL, 'MOCK_COMPLETED', ?5)
+            ",
+            params![
+                payment_id,
+                saved_order.id,
+                saved_order.total,
+                payment_method,
+                now
+            ],
+        )
+        .map_err(|error| format!("Could not create mock payment: {error}"))?;
+
+    // Mock payment completion: closing the order frees the table in list_table_layout.
+    transaction
+        .execute(
+            "
+            UPDATE orders
+            SET payment_status = 'PAID',
+                status = 'CLOSED',
+                updated_at = ?1,
+                closed_at = ?1
+            WHERE id = ?2
+            ",
+            params![now, saved_order.id],
+        )
+        .map_err(|error| format!("Could not mark order as paid: {error}"))?;
+
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not commit mock payment: {error}"))?;
+
+    Ok(CompletedMockPayment {
+        order_id: saved_order.id,
+        order_number: saved_order.order_number,
+        payment_id,
+        payment_method: request.payment_method,
+        amount: saved_order.total,
+        status: "COMPLETED".to_string(),
+        paid_at: now,
+    })
+}
+
+fn save_table_order_snapshot(
+    transaction: &Transaction,
+    request: &CreateOrderSnapshotRequest,
+    now: i64,
+) -> Result<SavedOrderSnapshot, String> {
+    let table_context = request
+        .table_context
+        .as_ref()
+        .ok_or_else(|| "Cannot save a table order snapshot without table context.".to_string())?;
     let total = request
         .lines
         .iter()
@@ -438,21 +556,12 @@ pub(crate) fn create_order_snapshot(
         }
     }
 
-    transaction
-        .commit()
-        .map_err(|error| format!("Could not commit order snapshot: {error}"))?;
-
-    Ok(CreatedOrderSnapshot {
+    Ok(SavedOrderSnapshot {
         id: order_id,
         order_number,
-        status: "OPEN".to_string(),
-        payment_status: "UNPAID".to_string(),
         subtotal,
         tax_total,
         total,
-        created_at: now,
-        table_id: Some(table_context.table_id.clone()),
-        table_name: Some(table_context.table_name.clone()),
         continued_existing_order,
     })
 }
@@ -470,15 +579,35 @@ fn next_order_number(transaction: &Transaction) -> Result<String, String> {
 }
 
 fn validate_order_snapshot_request(request: &CreateOrderSnapshotRequest) -> Result<(), String> {
-    if request.lines.is_empty() {
-        return Err("Cannot create an order snapshot without basket lines.".to_string());
-    }
+    validate_order_lines(&request.lines)?;
 
     if request.table_context.is_none() {
         return Err("Cannot create a table order snapshot without table context.".to_string());
     }
 
-    for line in &request.lines {
+    Ok(())
+}
+
+fn validate_mock_payment_request(request: &CompleteMockPaymentRequest) -> Result<(), String> {
+    validate_order_lines(&request.lines)?;
+
+    if request.table_context.is_none() {
+        return Err("Cannot complete a mock payment without table context.".to_string());
+    }
+
+    if request.payment_method != "CASH" && request.payment_method != "CARD_MANUAL" {
+        return Err("Unsupported mock payment method.".to_string());
+    }
+
+    Ok(())
+}
+
+fn validate_order_lines(lines: &[CreateOrderSnapshotLine]) -> Result<(), String> {
+    if lines.is_empty() {
+        return Err("Cannot create an order snapshot without basket lines.".to_string());
+    }
+
+    for line in lines {
         if line.quantity <= 0 {
             return Err(format!(
                 "Cannot create order snapshot with invalid quantity for {}.",

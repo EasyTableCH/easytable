@@ -10,20 +10,24 @@ type BasketPanelProps = {
   lines: BasketLine[];
   total: number;
   isSubmitting: boolean;
-  submitLabel: string;
+  bookLabel: string;
+  payLabel: string;
   onDecreaseLine: (lineId: string) => void;
   onRemoveLine: (lineId: string) => void;
   onCreateOrder: () => void;
+  onStartPayment: () => void;
 };
 
 export function BasketPanel({
   lines,
   total,
   isSubmitting,
-  submitLabel,
+  bookLabel,
+  payLabel,
   onDecreaseLine,
   onRemoveLine,
   onCreateOrder,
+  onStartPayment,
 }: BasketPanelProps) {
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
@@ -86,16 +90,28 @@ export function BasketPanel({
         <span>Total</span>
         <span>{formatChf(total)}</span>
       </div>
-      <Button
-        className={cn(
-          "h-18 shrink-0 rounded-none bg-emerald-300 text-lg font-black uppercase text-emerald-800 transition active:bg-emerald-400",
-          "disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400",
-        )}
-        disabled={lines.length === 0 || isSubmitting}
-        onClick={onCreateOrder}
-      >
-        {isSubmitting ? "Speichern..." : submitLabel}
-      </Button>
+      <div className="grid h-18 shrink-0 grid-cols-2 border-t border-slate-200">
+        <Button
+          className={cn(
+            "h-full rounded-none bg-amber-300 text-base font-black uppercase text-amber-900 transition hover:bg-amber-300 active:bg-amber-400",
+            "disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400",
+          )}
+          disabled={lines.length === 0 || isSubmitting}
+          onClick={onCreateOrder}
+        >
+          {isSubmitting ? "Speichern..." : bookLabel}
+        </Button>
+        <Button
+          className={cn(
+            "h-full rounded-none bg-emerald-300 text-base font-black uppercase text-emerald-900 transition hover:bg-emerald-300 active:bg-emerald-400",
+            "disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400",
+          )}
+          disabled={lines.length === 0 || isSubmitting}
+          onClick={onStartPayment}
+        >
+          {payLabel}
+        </Button>
+      </div>
     </aside>
   );
 }

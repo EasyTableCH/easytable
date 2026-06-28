@@ -1,11 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::State;
 
-use crate::db::{migrate_database, open_database};
-use crate::seeds::{
-    seed_products, seed_table_layout, seed_tax_codes, seed_variant_group_items, seed_variant_groups,
-};
+use crate::db::DbState;
 
 #[derive(Serialize)]
 pub(crate) struct PosProduct {
@@ -47,14 +44,8 @@ pub(crate) struct PosProductVariantGroupItem {
 }
 
 #[tauri::command]
-pub(crate) fn list_products(app: AppHandle) -> Result<Vec<PosProduct>, String> {
-    let connection = open_database(&app)?;
-    migrate_database(&connection)?;
-    seed_table_layout(&connection)?;
-    seed_tax_codes(&connection)?;
-    seed_products(&connection)?;
-    seed_variant_groups(&connection)?;
-    seed_variant_group_items(&connection)?;
+pub(crate) fn list_products(state: State<DbState>) -> Result<Vec<PosProduct>, String> {
+    let connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?;
 
     let mut statement = connection
         .prepare(
@@ -103,17 +94,11 @@ pub(crate) fn list_products(app: AppHandle) -> Result<Vec<PosProduct>, String> {
 
 #[tauri::command]
 pub(crate) fn list_product_variant_groups(
-    app: AppHandle,
+    state: State<DbState>,
     product_id: String,
 ) -> Result<Vec<PosProductVariantGroup>, String> {
-    let connection = open_database(&app)?;
-    migrate_database(&connection)?;
-    seed_table_layout(&connection)?;
-    seed_tax_codes(&connection)?;
-    seed_products(&connection)?;
-    seed_variant_groups(&connection)?;
-    seed_variant_group_items(&connection)?;
-
+    let connection = state.0.lock().map_err(|_| "Database lock poisoned".to_string())?
+;
     let mut group_statement = connection
         .prepare(
             "

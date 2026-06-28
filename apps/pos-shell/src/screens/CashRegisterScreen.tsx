@@ -15,7 +15,9 @@ import { formatChf } from "../lib/money";
 import type {
   BasketLine,
   BasketLineVariant,
+  CompletedMockPayment,
   CreatedOrderSnapshot,
+  MockPaymentMethod,
   OpenTableOrderBasket,
   PosProduct,
   ProductCard,
@@ -29,6 +31,7 @@ import {
   fallbackProducts,
   productVisuals,
 } from "./cash-register/catalogData";
+import { PaymentScreen } from "./cash-register/PaymentScreen";
 import { VariantSelectionDrawer } from "./cash-register/VariantSelectionDrawer";
 import {
   buildSelectedBasketVariants,
@@ -68,6 +71,8 @@ export function CashRegisterScreen({
   const [selectedVariantItemsByGroupId, setSelectedVariantItemsByGroupId] =
     useState<Record<string, ProductVariantGroupItem>>({});
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isCompletingPayment, setIsCompletingPayment] = useState(false);
+  const [isPaymentScreenOpen, setIsPaymentScreenOpen] = useState(false);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -106,6 +111,7 @@ export function CashRegisterScreen({
       }
 
       setBasketLines([]);
+      setIsPaymentScreenOpen(false);
       setOrderNotice(null);
 
       try {
@@ -261,10 +267,10 @@ export function CashRegisterScreen({
         return current.map((line) =>
           line.id === id
             ? {
-                ...line,
-                quantity: line.quantity + 1,
-                line_total: line.unit_total * (line.quantity + 1),
-              }
+              ...line,
+              quantity: line.quantity + 1,
+              line_total: line.unit_total * (line.quantity + 1),
+            }
             : line,
         );
       }
@@ -319,7 +325,7 @@ export function CashRegisterScreen({
   }
 
   async function handleCreateOrderSnapshot() {
-    if (basketLines.length === 0 || isCreatingOrder) {
+    if (basketLines.length === 0 || isCreatingOrder || isCompletingPayment) {
       return;
     }
 
@@ -352,6 +358,70 @@ export function CashRegisterScreen({
     } finally {
       setIsCreatingOrder(false);
     }
+  }
+
+  function handleStartPayment() {
+    if (basketLines.length === 0 || isCreatingOrder || isCompletingPayment) {
+      return;
+    }
+
+    if (!tableContext) {
+      setOrderNotice("Bitte zuerst einen Tisch auswahlen.");
+      return;
+    }
+
+    setOrderNotice(null);
+    setIsPaymentScreenOpen(true);
+  }
+
+  async function handleCompleteMockPayment(paymentMethod: MockPaymentMethod) {
+    if (basketLines.length === 0 || isCompletingPayment || !tableContext) {
+      return;
+    }
+
+    setIsCompletingPayment(true);
+    setOrderNotice(null);
+
+    try {
+      const payment = await invoke<CompletedMockPayment>(
+        "complete_mock_payment",
+        {
+          request: {
+            lines: basketLines,
+            table_context: tableContext,
+            payment_method: paymentMethod,
+          },
+        },
+      );
+
+      setBasketLines([]);
+      setIsPaymentScreenOpen(false);
+      setOrderNotice(
+        `Auftrag ${payment.order_number} wurde bezahlt (${formatChf(payment.amount)}).`,
+      );
+      onOrderCreated();
+    } catch (error) {
+      console.error("Could not complete mock payment.", error);
+      setIsPaymentScreenOpen(false);
+      setOrderNotice(
+        error instanceof Error
+          ? error.message
+          : "Mock-Zahlung konnte nicht abgeschlossen werden.",
+      );
+    } finally {
+      setIsCompletingPayment(false);
+    }
+  }
+
+  if (isPaymentScreenOpen) {
+    return (
+      <PaymentScreen
+        total={basketTotal}
+        isSubmitting={isCompletingPayment}
+        onCancel={() => setIsPaymentScreenOpen(false)}
+        onSelectMethod={(method) => void handleCompleteMockPayment(method)}
+      />
+    );
   }
 
   return (
@@ -460,11 +530,13 @@ export function CashRegisterScreen({
         <BasketPanel
           lines={basketLines}
           total={basketTotal}
-          isSubmitting={isCreatingOrder}
-          submitLabel="Auf Tisch buchen"
+          isSubmitting={isCreatingOrder || isCompletingPayment}
+          bookLabel="Buchen"
+          payLabel="Bezahlen"
           onDecreaseLine={decreaseBasketLine}
           onRemoveLine={removeBasketLine}
           onCreateOrder={() => void handleCreateOrderSnapshot()}
+          onStartPayment={handleStartPayment}
         />
       </section>
 
