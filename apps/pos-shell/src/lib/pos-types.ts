@@ -148,3 +148,52 @@ export type TableLayoutTable = {
   open_total: number;
   open_order_count: number;
 };
+
+export type PosPeripheralSettings = {
+  enabled: boolean;
+  provider: string;
+  device_id: string | null;
+};
+
+export type PosSettings = {
+  schema_version: number;
+  tenant_id: string;
+  location_id: string;
+  language: string;
+  business_day_cutover_time: string;
+  receipt_printer: PosPeripheralSettings;
+  payment_terminal: PosPeripheralSettings;
+};
+
+export type PosSettingsFile = {
+  path: string;
+  settings: PosSettings;
+};
+
+export type DayClosePreview = {
+  business_date: string;
+  business_day_cutover_time: string;
+  window_start_ms: number;
+  window_end_ms: number;
+  expected_cash: number;
+  expected_card: number;
+  expected_total: number;
+  order_count: number;
+  item_count: number;
+  existing_close: {
+    counted_cash: number;
+    cash_difference: number;
+    created_at: number;
+  } | null;
+};
+
+export type SavedDayClose = {
+  business_date: string;
+  total_cash: number;
+  total_card: number;
+  counted_cash: number;
+  cash_difference: number;
+  order_count: number;
+  item_count: number;
+  created_at: number;
+};

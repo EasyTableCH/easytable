@@ -2545,6 +2545,7 @@ dependencies = [
 name = "pos-shell"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "rusqlite",
  "serde",
  "serde_json",
