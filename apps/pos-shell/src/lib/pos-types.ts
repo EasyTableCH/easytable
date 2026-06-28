@@ -63,3 +63,76 @@ export type BasketLine = {
   quantity: number;
   line_total: number;
 };
+
+export type CreatedOrderSnapshot = {
+  id: string;
+  order_number: string;
+  status: "OPEN" | string;
+  payment_status: "UNPAID" | string;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  created_at: number;
+  table_id: string | null;
+  table_name: string | null;
+  continued_existing_order: boolean;
+};
+
+export type OpenTableOrderBasket = {
+  order_id: string;
+  order_number: string;
+  lines: BasketLine[];
+};
+
+export type TableContext = {
+  tenant_id: string;
+  location_id: string;
+  floor_id: string;
+  area_id: string;
+  table_id: string;
+  table_name: string;
+  area_name: string;
+  floor_name: string;
+  seats: number;
+};
+
+export type TableLayout = {
+  tenant: {
+    id: string;
+    name: string;
+  };
+  location: {
+    id: string;
+    tenant_id: string;
+    name: string;
+  };
+  floors: TableLayoutFloor[];
+};
+
+export type TableLayoutFloor = {
+  id: string;
+  location_id: string;
+  name: string;
+  sort_order: number;
+  areas: TableLayoutArea[];
+};
+
+export type TableLayoutArea = {
+  id: string;
+  floor_id: string;
+  name: string;
+  sort_order: number;
+  tables: TableLayoutTable[];
+};
+
+export type TableLayoutTable = {
+  id: string;
+  area_id: string;
+  name: string;
+  seats: number;
+  sort_order: number;
+  open_order_id: string | null;
+  open_order_number: string | null;
+  open_total: number;
+  open_order_count: number;
+};

@@ -15,10 +15,13 @@ import { formatChf } from "../lib/money";
 import type {
   BasketLine,
   BasketLineVariant,
+  CreatedOrderSnapshot,
+  OpenTableOrderBasket,
   PosProduct,
   ProductCard,
   ProductVariantGroup,
   ProductVariantGroupItem,
+  TableContext,
 } from "../lib/pos-types";
 import { BasketPanel } from "./cash-register/BasketPanel";
 import {
@@ -33,7 +36,9 @@ import {
 } from "./cash-register/variantSelection";
 
 type CashRegisterScreenProps = {
+  tableContext: TableContext | null;
   onNavigate: (screen: PosScreen) => void;
+  onOrderCreated: () => void;
 };
 
 const navItems = [
@@ -47,7 +52,11 @@ const navItems = [
   active: boolean;
 }[];
 
-export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
+export function CashRegisterScreen({
+  tableContext,
+  onNavigate,
+  onOrderCreated,
+}: CashRegisterScreenProps) {
   const showTopRegion = true;
   const [products, setProducts] = useState<PosProduct[]>(fallbackProducts);
   const [basketLines, setBasketLines] = useState<BasketLine[]>([]);
@@ -58,6 +67,8 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
   const [activeVariantStep, setActiveVariantStep] = useState(0);
   const [selectedVariantItemsByGroupId, setSelectedVariantItemsByGroupId] =
     useState<Record<string, ProductVariantGroupItem>>({});
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [orderNotice, setOrderNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -84,6 +95,46 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOpenTableBasket() {
+      if (!tableContext) {
+        setBasketLines([]);
+        return;
+      }
+
+      setBasketLines([]);
+      setOrderNotice(null);
+
+      try {
+        const openBasket = await invoke<OpenTableOrderBasket | null>(
+          "get_open_table_order_basket",
+          {
+            tableId: tableContext.table_id,
+          },
+        );
+
+        if (isMounted) {
+          setBasketLines(openBasket?.lines ?? []);
+        }
+      } catch (error) {
+        console.warn("Could not load open table basket.", error);
+
+        if (isMounted) {
+          setBasketLines([]);
+          setOrderNotice("Offener Tischauftrag konnte nicht geladen werden.");
+        }
+      }
+    }
+
+    void loadOpenTableBasket();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tableContext]);
 
   const productCards = useMemo<ProductCard[]>(
     () =>
@@ -238,6 +289,7 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
         },
       ];
     });
+    setOrderNotice(null);
   }
 
   function decreaseBasketLine(lineId: string) {
@@ -266,6 +318,42 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
     setBasketLines((current) => current.filter((line) => line.id !== lineId));
   }
 
+  async function handleCreateOrderSnapshot() {
+    if (basketLines.length === 0 || isCreatingOrder) {
+      return;
+    }
+
+    if (!tableContext) {
+      setOrderNotice("Bitte zuerst einen Tisch auswahlen.");
+      return;
+    }
+
+    setIsCreatingOrder(true);
+    setOrderNotice(null);
+
+    try {
+      const order = await invoke<CreatedOrderSnapshot>("create_order_snapshot", {
+        request: {
+          lines: basketLines,
+          table_context: tableContext,
+        },
+      });
+
+      setBasketLines([]);
+      setOrderNotice(`Auftrag ${order.order_number} wurde gespeichert.`);
+      onOrderCreated();
+    } catch (error) {
+      console.error("Could not create order snapshot.", error);
+      setOrderNotice(
+        error instanceof Error
+          ? error.message
+          : "Auftrag konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  }
+
   return (
     <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f6f7fb] text-slate-950">
       {showTopRegion ? (
@@ -275,6 +363,7 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
               <button
                 className="flex size-10 shrink-0 items-center justify-center rounded-md text-slate-500 transition active:scale-95 active:bg-slate-100"
                 aria-label="Zuruck"
+                onClick={() => onNavigate("tables")}
               >
                 <ArrowLeftIcon className="size-5" />
               </button>
@@ -297,11 +386,15 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
 
             <aside className="flex min-w-0 flex-col justify-center border-l border-slate-200 bg-slate-50 px-5">
               <p className="truncate text-sm font-black uppercase text-indigo-800">
-                Direktverkauf
+                {tableContext
+                  ? `Tisch ${tableContext.table_name} · ${tableContext.area_name}`
+                  : "Tischbetrieb"}
               </p>
               <p className="truncate text-[0.7rem] font-bold uppercase text-slate-400">
                 {basketLines.length === 0
-                  ? "Keine Artikel gewahlt"
+                  ? tableContext
+                    ? `${tableContext.floor_name} · ${tableContext.seats} Sitzplatze`
+                    : "Keine Artikel gewahlt"
                   : `${basketLines.length} Positionen`}
               </p>
             </aside>
@@ -367,10 +460,19 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
         <BasketPanel
           lines={basketLines}
           total={basketTotal}
+          isSubmitting={isCreatingOrder}
+          submitLabel="Auf Tisch buchen"
           onDecreaseLine={decreaseBasketLine}
           onRemoveLine={removeBasketLine}
+          onCreateOrder={() => void handleCreateOrderSnapshot()}
         />
       </section>
+
+      {orderNotice ? (
+        <div className="fixed bottom-20 left-4 max-w-sm rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg shadow-slate-900/10">
+          {orderNotice}
+        </div>
+      ) : null}
 
       <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
         {navItems.map(({ label, icon: Icon, screen, active }) => (

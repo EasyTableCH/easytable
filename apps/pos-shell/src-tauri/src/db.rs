@@ -1,0 +1,383 @@
+use rusqlite::Connection;
+use serde::Serialize;
+use std::{fs, path::PathBuf};
+use tauri::{AppHandle, Manager};
+
+use crate::seeds::{
+    seed_products, seed_table_layout, seed_tax_codes, seed_variant_group_items, seed_variant_groups,
+};
+
+#[derive(Serialize)]
+pub(crate) struct PosDatabaseInfo {
+    path: String,
+    seeded_tenants: usize,
+    seeded_locations: usize,
+    seeded_floors: usize,
+    seeded_areas: usize,
+    seeded_tables: usize,
+    seeded_tax_codes: usize,
+    seeded_products: usize,
+    seeded_variant_groups: usize,
+    seeded_variant_group_items: usize,
+}
+
+pub(crate) fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not resolve app data directory: {error}"))?;
+
+    fs::create_dir_all(&data_dir)
+        .map_err(|error| format!("Could not create app data directory: {error}"))?;
+
+    Ok(data_dir.join("easytable-pos.sqlite3"))
+}
+
+pub(crate) fn open_database(app: &AppHandle) -> Result<Connection, String> {
+    let path = database_path(app)?;
+    Connection::open(path).map_err(|error| format!("Could not open SQLite database: {error}"))
+}
+
+pub(crate) fn migrate_database(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute_batch(
+            "
+            PRAGMA foreign_keys = ON;
+
+            CREATE TABLE IF NOT EXISTS tenants (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS locations (
+              id TEXT PRIMARY KEY,
+              tenant_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(tenant_id) REFERENCES tenants(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS floors (
+              id TEXT PRIMARY KEY,
+              location_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(location_id) REFERENCES locations(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS areas (
+              id TEXT PRIMARY KEY,
+              floor_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(floor_id) REFERENCES floors(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS tables (
+              id TEXT PRIMARY KEY,
+              area_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              seats INTEGER NOT NULL DEFAULT 0,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(area_id) REFERENCES areas(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS tax_codes (
+              id TEXT PRIMARY KEY,
+              code TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL,
+              rate_bps INTEGER NOT NULL,
+              is_default INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS products (
+              id TEXT PRIMARY KEY,
+              product_type TEXT NOT NULL DEFAULT 'BASIC' CHECK(product_type IN ('BASIC','SERVICE')),
+              name TEXT NOT NULL,
+              category TEXT NOT NULL DEFAULT 'Alle',
+              price INTEGER NOT NULL,
+              tax_code_id TEXT NOT NULL DEFAULT 'tax_standard_ch',
+              is_available INTEGER NOT NULL DEFAULT 1,
+              station TEXT NOT NULL DEFAULT 'KITCHEN',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(tax_code_id) REFERENCES tax_codes(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS product_variant_groups (
+              id TEXT PRIMARY KEY,
+              applies_to TEXT NOT NULL DEFAULT 'PRODUCT' CHECK(applies_to IN ('PRODUCT','CATEGORY')),
+              product_id TEXT,
+              category TEXT,
+              name TEXT NOT NULL,
+              selection_type TEXT NOT NULL DEFAULT 'SINGLE' CHECK(selection_type IN ('SINGLE','MULTIPLE')),
+              min_select INTEGER NOT NULL DEFAULT 0,
+              max_select INTEGER NOT NULL DEFAULT 1,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              is_required INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              CHECK(
+                (applies_to = 'PRODUCT' AND product_id IS NOT NULL)
+                OR (applies_to = 'CATEGORY' AND category IS NOT NULL)
+              ),
+              FOREIGN KEY(product_id) REFERENCES products(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS product_variant_group_items (
+              id TEXT PRIMARY KEY,
+              variant_group_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              price_delta INTEGER NOT NULL DEFAULT 0 CHECK(price_delta >= 0),
+              is_default INTEGER NOT NULL DEFAULT 0,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              FOREIGN KEY(variant_group_id) REFERENCES product_variant_groups(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS orders (
+              id TEXT PRIMARY KEY,
+              order_number TEXT UNIQUE NOT NULL,
+              tenant_id TEXT,
+              location_id TEXT,
+              floor_id TEXT,
+              area_id TEXT,
+              table_id TEXT,
+              table_name TEXT,
+              service_mode TEXT NOT NULL DEFAULT 'TABLE',
+              status TEXT NOT NULL DEFAULT 'OPEN',
+              subtotal INTEGER NOT NULL DEFAULT 0,
+              tax_total INTEGER NOT NULL DEFAULT 0,
+              total INTEGER NOT NULL DEFAULT 0,
+              payment_status TEXT NOT NULL DEFAULT 'UNPAID',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER,
+              closed_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS order_items (
+              id TEXT PRIMARY KEY,
+              order_id TEXT NOT NULL,
+              product_id TEXT,
+              product_type TEXT NOT NULL DEFAULT 'BASIC',
+              product_name TEXT NOT NULL,
+              product_category TEXT NOT NULL DEFAULT '',
+              quantity INTEGER NOT NULL,
+              unit_price INTEGER NOT NULL,
+              tax_code_id TEXT,
+              tax_code_name TEXT NOT NULL DEFAULT '',
+              tax_rate_bps INTEGER NOT NULL,
+              tax_amount INTEGER NOT NULL,
+              total_price INTEGER NOT NULL,
+              station TEXT DEFAULT 'KITCHEN',
+              notes TEXT,
+              created_at INTEGER NOT NULL,
+              FOREIGN KEY(order_id) REFERENCES orders(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS order_item_variant_snapshots (
+              id TEXT PRIMARY KEY,
+              order_item_id TEXT NOT NULL,
+              variant_group_id TEXT,
+              variant_group_name TEXT NOT NULL,
+              variant_item_id TEXT,
+              variant_item_name TEXT NOT NULL,
+              price_delta INTEGER NOT NULL,
+              created_at INTEGER NOT NULL,
+              FOREIGN KEY(order_item_id) REFERENCES order_items(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS payments (
+              id TEXT PRIMARY KEY,
+              order_id TEXT NOT NULL,
+              amount INTEGER NOT NULL,
+              method TEXT NOT NULL CHECK(method IN ('CASH','CARD_MANUAL','WALLEE')),
+              status TEXT NOT NULL CHECK(status IN ('COMPLETED','FAILED','PENDING','CANCELED')),
+              provider TEXT,
+              provider_transaction_id TEXT,
+              provider_status TEXT,
+              created_at INTEGER NOT NULL,
+              FOREIGN KEY(order_id) REFERENCES orders(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS cash_sessions (
+              id TEXT PRIMARY KEY,
+              opened_at INTEGER NOT NULL,
+              closed_at INTEGER,
+              opening_cash INTEGER NOT NULL DEFAULT 0,
+              closing_cash_expected INTEGER,
+              closing_cash_counted INTEGER,
+              difference INTEGER,
+              status TEXT NOT NULL DEFAULT 'OPEN'
+            );
+
+            CREATE TABLE IF NOT EXISTS cash_movements (
+              id TEXT PRIMARY KEY,
+              cash_session_id TEXT NOT NULL,
+              type TEXT NOT NULL CHECK(type IN ('OPENING','SALE','CASH_IN','CASH_OUT','CLOSING')),
+              amount INTEGER NOT NULL,
+              reason TEXT,
+              created_at INTEGER NOT NULL,
+              FOREIGN KEY(cash_session_id) REFERENCES cash_sessions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS print_jobs (
+              id TEXT PRIMARY KEY,
+              type TEXT NOT NULL CHECK(type IN ('RECEIPT','KITCHEN_SLIP','BAR_SLIP','DRAWER')),
+              payload_json TEXT NOT NULL,
+              station TEXT,
+              status TEXT NOT NULL DEFAULT 'pending',
+              error_message TEXT,
+              created_at INTEGER NOT NULL,
+              completed_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS day_closes (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL UNIQUE,
+              total_cash INTEGER NOT NULL,
+              total_card INTEGER NOT NULL,
+              order_count INTEGER NOT NULL,
+              item_count INTEGER NOT NULL,
+              report_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+            ",
+        )
+        .map_err(|error| format!("Could not migrate SQLite database: {error}"))?;
+
+    add_column_if_missing(
+        connection,
+        "products",
+        "product_type",
+        "product_type TEXT NOT NULL DEFAULT 'BASIC'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "products",
+        "tax_code_id",
+        "tax_code_id TEXT NOT NULL DEFAULT 'tax_standard_ch'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "product_variant_groups",
+        "applies_to",
+        "applies_to TEXT NOT NULL DEFAULT 'PRODUCT'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "product_variant_groups",
+        "category",
+        "category TEXT",
+    )?;
+    add_column_if_missing(
+        connection,
+        "order_items",
+        "product_type",
+        "product_type TEXT NOT NULL DEFAULT 'BASIC'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "order_items",
+        "product_category",
+        "product_category TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(connection, "order_items", "tax_code_id", "tax_code_id TEXT")?;
+    add_column_if_missing(
+        connection,
+        "order_items",
+        "tax_code_name",
+        "tax_code_name TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(connection, "orders", "tenant_id", "tenant_id TEXT")?;
+    add_column_if_missing(connection, "orders", "location_id", "location_id TEXT")?;
+    add_column_if_missing(connection, "orders", "floor_id", "floor_id TEXT")?;
+    add_column_if_missing(connection, "orders", "area_id", "area_id TEXT")?;
+    add_column_if_missing(connection, "orders", "table_id", "table_id TEXT")?;
+    add_column_if_missing(connection, "orders", "table_name", "table_name TEXT")?;
+    add_column_if_missing(
+        connection,
+        "orders",
+        "service_mode",
+        "service_mode TEXT NOT NULL DEFAULT 'TABLE'",
+    )?;
+
+    Ok(())
+}
+
+fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| format!("Could not inspect {table}: {error}"))?;
+
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| format!("Could not read {table} columns: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not parse {table} columns: {error}"))?;
+
+    Ok(columns.iter().any(|existing| existing == column))
+}
+
+fn add_column_if_missing(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    column_definition: &str,
+) -> Result<(), String> {
+    if column_exists(connection, table, column)? {
+        return Ok(());
+    }
+
+    // SQLite can add columns safely, but cannot retrofit all constraints on legacy tables.
+    connection
+        .execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column_definition}"),
+            [],
+        )
+        .map_err(|error| format!("Could not add {table}.{column}: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn initialize_pos_database(app: AppHandle) -> Result<PosDatabaseInfo, String> {
+    let connection = open_database(&app)?;
+    migrate_database(&connection)?;
+    let (seeded_tenants, seeded_locations, seeded_floors, seeded_areas, seeded_tables) =
+        seed_table_layout(&connection)?;
+    let seeded_tax_codes = seed_tax_codes(&connection)?;
+    let seeded_products = seed_products(&connection)?;
+    let seeded_variant_groups = seed_variant_groups(&connection)?;
+    let seeded_variant_group_items = seed_variant_group_items(&connection)?;
+    let path = database_path(&app)?;
+
+    Ok(PosDatabaseInfo {
+        path: path.display().to_string(),
+        seeded_tenants,
+        seeded_locations,
+        seeded_floors,
+        seeded_areas,
+        seeded_tables,
+        seeded_tax_codes,
+        seeded_products,
+        seeded_variant_groups,
+        seeded_variant_group_items,
+    })
+}

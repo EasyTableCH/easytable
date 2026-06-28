@@ -1,14 +1,50 @@
 import { useState } from "react";
 
+import type { TableContext } from "./lib/pos-types";
 import { CashRegisterScreen } from "./screens/CashRegisterScreen";
+import { TablePlanScreen } from "./screens/TablePlanScreen";
 
-export type PosScreen = "cash" | "more" | "logout";
+export type PosScreen = "tables" | "cash" | "more" | "logout";
 
 function App() {
-  const [activeScreen, setActiveScreen] = useState<PosScreen>("cash");
+  const [activeScreen, setActiveScreen] = useState<PosScreen>("tables");
+  const [selectedTableContext, setSelectedTableContext] =
+    useState<TableContext | null>(null);
+
+  function handleTableSelect(context: TableContext) {
+    setSelectedTableContext(context);
+    setActiveScreen("cash");
+  }
+
+  function handleNavigate(screen: PosScreen) {
+    if (screen === "cash" && !selectedTableContext) {
+      setActiveScreen("tables");
+      return;
+    }
+
+    setActiveScreen(screen);
+  }
+
+  if (activeScreen === "tables") {
+    return (
+      <TablePlanScreen
+        onNavigate={handleNavigate}
+        onSelectTable={handleTableSelect}
+      />
+    );
+  }
 
   if (activeScreen === "cash") {
-    return <CashRegisterScreen onNavigate={setActiveScreen} />;
+    return (
+      <CashRegisterScreen
+        tableContext={selectedTableContext}
+        onNavigate={handleNavigate}
+        onOrderCreated={() => {
+          setSelectedTableContext(null);
+          setActiveScreen("tables");
+        }}
+      />
+    );
   }
 
   return (
@@ -22,7 +58,7 @@ function App() {
         </p>
         <button
           className="h-12 rounded-md bg-slate-950 px-5 text-sm font-black uppercase text-white transition active:scale-[0.98]"
-          onClick={() => setActiveScreen("cash")}
+          onClick={() => setActiveScreen("tables")}
         >
           Zur Kasse
         </button>

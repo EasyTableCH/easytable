@@ -1,4 +1,7 @@
 import { CheckIcon, ChevronLeftIcon } from "lucide-react";
+import { Badge } from "@easytable/ui/components/badge";
+import { Button } from "@easytable/ui/components/button";
+import { Card, CardContent } from "@easytable/ui/components/card";
 import {
   Drawer,
   DrawerContent,
@@ -7,6 +10,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@easytable/ui/components/drawer";
+import { cn } from "@easytable/ui/lib/utils";
 
 import { formatChf, formatPriceDelta } from "../../lib/money";
 import type {
@@ -92,15 +96,16 @@ export function VariantSelectionDrawer({
                 <span>{formatChf(unitTotal)}</span>
               </div>
               <div className="grid grid-cols-[7rem_1fr] gap-3">
-                <button
+                <Button
+                  variant="outline"
                   className="flex h-12 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white text-sm font-black text-slate-700 shadow-sm transition active:scale-[0.98]"
                   onClick={onBack}
                 >
                   <ChevronLeftIcon className="size-5" />
                   Zuruck
-                </button>
-                <button
-                  className="h-12 rounded-md bg-indigo-800 text-sm font-black text-white shadow-sm transition active:scale-[0.99] disabled:bg-slate-300"
+                </Button>
+                <Button
+                  className="h-12 rounded-md bg-indigo-800 text-sm font-black text-white shadow-sm transition hover:bg-indigo-900 active:scale-[0.99] disabled:bg-slate-300"
                   disabled={
                     Boolean(activeGroup?.is_required) &&
                     !selectedItemsByGroupId[activeGroup.id]
@@ -108,7 +113,7 @@ export function VariantSelectionDrawer({
                   onClick={onPrimaryAction}
                 >
                   {isOverviewStep ? "In den Warenkorb" : "Zur Ubersicht"}
-                </button>
+                </Button>
               </div>
             </DrawerFooter>
           </>
@@ -135,9 +140,12 @@ function VariantGroupStep({
       <div className="mb-4 flex items-center gap-2">
         <h2 className="text-base font-black text-slate-950">{group.name}</h2>
         {group.is_required ? (
-          <span className="rounded-md bg-indigo-100 px-2 py-1 text-xs font-black text-indigo-800">
+          <Badge
+            variant="secondary"
+            className="rounded-md bg-indigo-100 px-2 py-1 text-xs font-black text-indigo-800"
+          >
             Pflichtfeld
-          </span>
+          </Badge>
         ) : null}
         <span className="text-xs font-bold text-slate-400">
           Nur eine Auswahl
@@ -149,12 +157,13 @@ function VariantGroupStep({
           const selected = selectedItem?.id === item.id;
 
           return (
-            <button
+            <Button
               key={item.id}
-              className={[
-                "flex min-h-16 w-full items-center justify-between gap-4 rounded-md border bg-white px-4 text-left shadow-sm transition active:scale-[0.99]",
+              variant="ghost"
+              className={cn(
+                "flex min-h-16 w-full items-center justify-between gap-4 rounded-md border bg-white px-4 text-left shadow-sm transition hover:bg-white active:scale-[0.99]",
                 selected ? "border-indigo-700" : "border-slate-200",
-              ].join(" ")}
+              )}
               onClick={() => onSelect(group, item)}
             >
               <div className="flex min-w-0 items-center gap-3">
@@ -185,7 +194,7 @@ function VariantGroupStep({
                     : "border-slate-300",
                 ].join(" ")}
               />
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -210,22 +219,24 @@ function VariantOverview({
           const selectedItem = selectedItemsByGroupId[group.id];
 
           return (
-            <div
+            <Card
               key={group.id}
-              className="flex min-h-16 items-center justify-between gap-4 rounded-md border border-slate-200 bg-white px-4 shadow-sm"
+              className="min-h-16 rounded-md bg-white py-0 shadow-sm ring-slate-200"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-black text-slate-950">
-                  {group.name}
+              <CardContent className="flex min-h-16 items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-slate-950">
+                    {group.name}
+                  </p>
+                  <p className="truncate text-sm font-bold text-slate-700">
+                    {selectedItem?.name ?? "Keine Auswahl"}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-black text-slate-500">
+                  {formatPriceDelta(selectedItem?.price_delta ?? 0)}
                 </p>
-                <p className="truncate text-sm font-bold text-slate-700">
-                  {selectedItem?.name ?? "Keine Auswahl"}
-                </p>
-              </div>
-              <p className="shrink-0 text-sm font-black text-slate-500">
-                {formatPriceDelta(selectedItem?.price_delta ?? 0)}
-              </p>
-            </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
