@@ -4,91 +4,37 @@ import {
   DoorOpenIcon,
   EllipsisIcon,
   LayoutGridIcon,
-  ReceiptTextIcon,
   SearchIcon,
   ShoppingBagIcon,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import type { PosScreen } from "../App";
+import { formatChf } from "../lib/money";
+import type {
+  BasketLine,
+  BasketLineVariant,
+  PosProduct,
+  ProductCard,
+  ProductVariantGroup,
+  ProductVariantGroupItem,
+} from "../lib/pos-types";
+import { BasketPanel } from "./cash-register/BasketPanel";
+import {
+  categories,
+  fallbackProducts,
+  productVisuals,
+} from "./cash-register/catalogData";
+import { VariantSelectionDrawer } from "./cash-register/VariantSelectionDrawer";
+import {
+  buildSelectedBasketVariants,
+  getDefaultSelections,
+} from "./cash-register/variantSelection";
 
 type CashRegisterScreenProps = {
   onNavigate: (screen: PosScreen) => void;
 };
-
-const categories = [
-  "Alle",
-  "Test",
-  "Shisha",
-  "Sussgetranke",
-  "Heisse Getranke",
-  "Bier",
-  "Apero & Wein",
-  "Cocktails",
-  "Snacks",
-] as const;
-
-const products = [
-  {
-    name: "Rechnung",
-    price: "CHF 0.00",
-    tone: "from-slate-50 to-slate-100",
-    accent: "text-slate-300",
-  },
-  {
-    name: "Service Personal",
-    price: "CHF 0.00",
-    tone: "from-zinc-50 to-slate-100",
-    accent: "text-slate-300",
-  },
-  {
-    name: "Shisha Standard",
-    price: "CHF 30.00",
-    tone: "from-cyan-50 via-white to-indigo-100",
-    accent: "text-cyan-700",
-  },
-  {
-    name: "NAVA Shisha",
-    price: "CHF 59.00",
-    tone: "from-stone-50 via-white to-amber-100",
-    accent: "text-stone-600",
-  },
-  {
-    name: "SmokeZilla Laser Shisha",
-    price: "CHF 89.00",
-    tone: "from-emerald-900 via-teal-500 to-lime-200",
-    accent: "text-lime-100",
-  },
-  {
-    name: "Shisha Triple Skull",
-    price: "CHF 45.00",
-    tone: "from-neutral-50 via-white to-rose-100",
-    accent: "text-rose-400",
-  },
-  {
-    name: "Neuer Kopf",
-    price: "CHF 15.00",
-    tone: "from-zinc-100 via-white to-neutral-200",
-    accent: "text-zinc-800",
-  },
-  {
-    name: "Kohle",
-    price: "CHF 0.00",
-    tone: "from-neutral-900 via-stone-700 to-orange-300",
-    accent: "text-orange-100",
-  },
-  {
-    name: "Mundstucke",
-    price: "CHF 3.00",
-    tone: "from-fuchsia-200 via-sky-200 to-lime-200",
-    accent: "text-fuchsia-700",
-  },
-  {
-    name: "Chinotto",
-    price: "CHF 7.00",
-    tone: "from-amber-50 via-white to-orange-100",
-    accent: "text-orange-700",
-  },
-] as const;
 
 const navItems = [
   { label: "Kasse", icon: ShoppingBagIcon, screen: "cash", active: true },
@@ -103,6 +49,196 @@ const navItems = [
 
 export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
   const showTopRegion = true;
+  const [products, setProducts] = useState<PosProduct[]>(fallbackProducts);
+  const [basketLines, setBasketLines] = useState<BasketLine[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductCard | null>(
+    null,
+  );
+  const [variantGroups, setVariantGroups] = useState<ProductVariantGroup[]>([]);
+  const [activeVariantStep, setActiveVariantStep] = useState(0);
+  const [selectedVariantItemsByGroupId, setSelectedVariantItemsByGroupId] =
+    useState<Record<string, ProductVariantGroupItem>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProducts() {
+      try {
+        await invoke("initialize_pos_database");
+        const databaseProducts = await invoke<PosProduct[]>("list_products");
+
+        if (isMounted && databaseProducts.length > 0) {
+          setProducts(databaseProducts);
+        }
+      } catch (error) {
+        console.warn(
+          "Using fallback products because SQLite is unavailable.",
+          error,
+        );
+      }
+    }
+
+    void loadProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const productCards = useMemo<ProductCard[]>(
+    () =>
+      products.map((product, index) => ({
+        ...product,
+        ...productVisuals[index % productVisuals.length],
+      })),
+    [products],
+  );
+
+  const basketTotal = basketLines.reduce(
+    (total, line) => total + line.line_total,
+    0,
+  );
+  const selectedVariantTotal = Object.values(
+    selectedVariantItemsByGroupId,
+  ).reduce((total, item) => total + item.price_delta, 0);
+  const drawerUnitTotal = selectedProduct
+    ? selectedProduct.price + selectedVariantTotal
+    : 0;
+
+  async function handleProductPress(product: ProductCard) {
+    try {
+      const groups = await invoke<ProductVariantGroup[]>(
+        "list_product_variant_groups",
+        {
+          productId: product.id,
+        },
+      );
+
+      if (groups.length === 0) {
+        addProductToBasket(product, []);
+        return;
+      }
+
+      openVariantDrawer(product, groups);
+    } catch (error) {
+      console.warn("Adding product without variants after lookup failed.", error);
+      addProductToBasket(product, []);
+    }
+  }
+
+  function openVariantDrawer(product: ProductCard, groups: ProductVariantGroup[]) {
+    setSelectedProduct(product);
+    setVariantGroups(groups);
+    setActiveVariantStep(0);
+    setSelectedVariantItemsByGroupId(getDefaultSelections(groups));
+  }
+
+  function closeVariantDrawer() {
+    setSelectedProduct(null);
+    setVariantGroups([]);
+    setActiveVariantStep(0);
+    setSelectedVariantItemsByGroupId({});
+  }
+
+  function handleDrawerOpenChange(open: boolean) {
+    if (!open) {
+      closeVariantDrawer();
+    }
+  }
+
+  function handleVariantBack() {
+    if (activeVariantStep === 0) {
+      closeVariantDrawer();
+      return;
+    }
+
+    setActiveVariantStep((current) => current - 1);
+  }
+
+  function handlePrimaryDrawerAction() {
+    if (!selectedProduct) {
+      return;
+    }
+
+    if (activeVariantStep === variantGroups.length) {
+      addProductToBasket(
+        selectedProduct,
+        buildSelectedBasketVariants(variantGroups, selectedVariantItemsByGroupId),
+      );
+      closeVariantDrawer();
+      return;
+    }
+
+    const group = variantGroups[activeVariantStep];
+
+    if (group.is_required && !selectedVariantItemsByGroupId[group.id]) {
+      return;
+    }
+
+    setActiveVariantStep((current) => current + 1);
+  }
+
+  function handleVariantItemSelect(
+    group: ProductVariantGroup,
+    item: ProductVariantGroupItem,
+  ) {
+    if (group.selection_type !== "SINGLE") {
+      return;
+    }
+
+    setSelectedVariantItemsByGroupId((current) => ({
+      ...current,
+      [group.id]: item,
+    }));
+  }
+
+  function addProductToBasket(
+    product: ProductCard,
+    variants: BasketLineVariant[],
+  ) {
+    const unitTotal =
+      product.price +
+      variants.reduce((total, variant) => total + variant.price_delta, 0);
+    const id = `${product.id}:${variants
+      .map((variant) => variant.variant_item_id)
+      .join("|")}`;
+
+    setBasketLines((current) => {
+      const existingLine = current.find((line) => line.id === id);
+
+      if (existingLine) {
+        return current.map((line) =>
+          line.id === id
+            ? {
+                ...line,
+                quantity: line.quantity + 1,
+                line_total: line.unit_total * (line.quantity + 1),
+              }
+            : line,
+        );
+      }
+
+      return [
+        ...current,
+        {
+          id,
+          product_id: product.id,
+          product_type: product.product_type,
+          product_name: product.name,
+          product_category: product.category,
+          base_price: product.price,
+          tax_code_id: product.tax_code_id,
+          tax_code_name: product.tax_code_name,
+          tax_rate_bps: product.tax_rate_bps,
+          station: product.station,
+          variants,
+          unit_total: unitTotal,
+          quantity: 1,
+          line_total: unitTotal,
+        },
+      ];
+    });
+  }
 
   return (
     <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f6f7fb] text-slate-950">
@@ -138,7 +274,9 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
                 Direktverkauf
               </p>
               <p className="truncate text-[0.7rem] font-bold uppercase text-slate-400">
-                Keine Artikel gewahlt
+                {basketLines.length === 0
+                  ? "Keine Artikel gewahlt"
+                  : `${basketLines.length} Positionen`}
               </p>
             </aside>
           </div>
@@ -161,10 +299,11 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
           </div>
 
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-            {products.map((product, index) => (
+            {productCards.map((product, index) => (
               <button
-                key={product.name}
+                key={product.id}
                 className="group flex aspect-[1.08] min-h-44 flex-col overflow-hidden rounded-md bg-white text-left shadow-md shadow-slate-200/80 ring-1 ring-slate-200 transition active:scale-[0.985]"
+                onClick={() => void handleProductPress(product)}
               >
                 <div
                   className={`relative flex flex-1 items-center justify-center bg-gradient-to-br ${product.tone}`}
@@ -185,7 +324,7 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
                       {product.name}
                     </p>
                     <p className="text-sm font-extrabold text-slate-500">
-                      {product.price}
+                      {formatChf(product.price)}
                     </p>
                   </div>
                   {index > 1 ? (
@@ -199,17 +338,7 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto overscroll-contain px-6 text-center">
-            <ReceiptTextIcon className="mb-4 size-14 text-slate-300" />
-            <p className="text-base font-black text-slate-400">
-              Warenkorb leer
-            </p>
-          </div>
-          <button className="h-18 shrink-0 bg-emerald-300 text-lg font-black uppercase text-emerald-800 transition active:bg-emerald-400 disabled:text-emerald-600">
-            Bezahlen
-          </button>
-        </aside>
+        <BasketPanel lines={basketLines} total={basketTotal} />
       </section>
 
       <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
@@ -227,6 +356,19 @@ export function CashRegisterScreen({ onNavigate }: CashRegisterScreenProps) {
           </button>
         ))}
       </footer>
+
+      <VariantSelectionDrawer
+        open={selectedProduct !== null}
+        product={selectedProduct}
+        groups={variantGroups}
+        activeStep={activeVariantStep}
+        selectedItemsByGroupId={selectedVariantItemsByGroupId}
+        unitTotal={drawerUnitTotal}
+        onOpenChange={handleDrawerOpenChange}
+        onBack={handleVariantBack}
+        onPrimaryAction={handlePrimaryDrawerAction}
+        onSelectItem={handleVariantItemSelect}
+      />
     </main>
   );
 }
