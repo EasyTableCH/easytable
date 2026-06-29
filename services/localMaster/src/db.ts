@@ -1,4 +1,4 @@
-﻿import { mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -36,6 +36,10 @@ function ensureSchema(db: DatabaseSync) {
     "CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, amount INTEGER NOT NULL, received_cash INTEGER, change_given INTEGER, method TEXT NOT NULL, status TEXT NOT NULL, provider TEXT NOT NULL, provider_transaction_id TEXT, provider_status TEXT NOT NULL, created_at INTEGER NOT NULL)",
     "CREATE INDEX IF NOT EXISTS idx_payments_day_close ON payments(status, method, created_at)",
     "CREATE TABLE IF NOT EXISTS day_closes (id TEXT PRIMARY KEY, date TEXT NOT NULL UNIQUE, total_cash INTEGER NOT NULL, total_card INTEGER NOT NULL, order_count INTEGER NOT NULL, item_count INTEGER NOT NULL, report_json TEXT NOT NULL, created_at INTEGER NOT NULL)",
-    "CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+    "CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS pairing_sessions (code TEXT PRIMARY KEY, instance_id TEXT NOT NULL, display_url TEXT, expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS idx_pairing_sessions_expires ON pairing_sessions(expires_at, used_at)",
+    "CREATE TABLE IF NOT EXISTS paired_terminals (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, secret TEXT NOT NULL, device_fingerprint TEXT, paired_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS idx_paired_terminals_seen ON paired_terminals(last_seen_at)"
   ].join(";"));
 }

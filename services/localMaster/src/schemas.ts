@@ -1,4 +1,4 @@
-﻿import type { FastifySchema } from "fastify";
+import type { FastifySchema } from "fastify";
 
 const draftItemSchema = {
   type: "object",
@@ -101,3 +101,33 @@ export const saveDayCloseSchema = {
   }
 } satisfies FastifySchema;
 
+
+export const createPairingSessionSchema = {
+  body: posRequestWrapperSchema,
+  response: {
+    201: {
+      type: "object",
+      additionalProperties: true
+    }
+  }
+} satisfies FastifySchema;
+
+export const pairTerminalSchema = {
+  body: posRequestWrapperSchema,
+  response: {
+    201: {
+      type: "object",
+      additionalProperties: true
+    }
+  }
+} satisfies FastifySchema;
+
+export const terminalHeartbeatSchema = {
+  body: posRequestWrapperSchema,
+  response: {
+    200: {
+      type: "object",
+      additionalProperties: true
+    }
+  }
+} satisfies FastifySchema;

@@ -1,16 +1,20 @@
-﻿import type {
+import type {
   BasketLine,
   CompletedMockPayment,
   DayClosePreview,
   CreatedOrderSnapshot,
+  LocalMasterIdentity,
   MockPaymentRequest,
   PosSettingsFile,
   OpenTableOrderBasket,
+  PairingSession,
   PosProduct,
   ProductVariantGroup,
   SavedDayClose,
   TableContext,
   TableLayout,
+  TerminalPairingConfig,
+  TerminalRecord,
 } from "./pos-types";
 
 export type LocalMasterEvent = {
@@ -20,13 +24,69 @@ export type LocalMasterEvent = {
   payload?: unknown;
 };
 
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: unknown;
+  }
+}
+
+const terminalConfigStorageKey = "easytable.pos.terminalConfig";
 const configuredUrl =
   (import.meta.env.VITE_LOCAL_MASTER_URL as string | undefined) ??
   (import.meta.env.VITE_LOCAL_REALTIME_URL as string | undefined);
 
+let runtimeTerminalConfig: TerminalPairingConfig | null = readLocalStorageTerminalConfig();
+let localMasterBlockedReason: string | null = null;
+
+export async function initializeLocalMasterClient() {
+  const storedConfig = await loadTerminalConfig();
+
+  if (storedConfig) {
+    runtimeTerminalConfig = storedConfig;
+
+    try {
+      const identity = await loadLocalMasterIdentity(storedConfig.localMasterUrl);
+
+      if (identity.instance_id !== storedConfig.localMasterInstanceId) {
+        localMasterBlockedReason = "Andere LocalMaster Instanz erkannt. Neu-Kopplung erforderlich.";
+      }
+    } catch {
+      localMasterBlockedReason = null;
+    }
+  }
+
+  return runtimeTerminalConfig;
+}
+
+export function getStoredTerminalConfig() {
+  return runtimeTerminalConfig;
+}
+
+export function getLocalMasterBlockedReason() {
+  return localMasterBlockedReason;
+}
+
+export async function saveTerminalPairingConfig(config: TerminalPairingConfig) {
+  runtimeTerminalConfig = config;
+  localMasterBlockedReason = null;
+  writeLocalStorageTerminalConfig(config);
+  await saveTauriTerminalConfig(config);
+}
+
+export async function clearTerminalPairingConfig() {
+  runtimeTerminalConfig = null;
+  localMasterBlockedReason = null;
+  window.localStorage.removeItem(terminalConfigStorageKey);
+  await clearTauriTerminalConfig();
+}
+
 export function getLocalMasterUrl() {
+  if (runtimeTerminalConfig?.localMasterUrl) {
+    return normalizeBaseUrl(runtimeTerminalConfig.localMasterUrl);
+  }
+
   if (configuredUrl) {
-    return configuredUrl.endsWith("/") ? configuredUrl.slice(0, -1) : configuredUrl;
+    return normalizeBaseUrl(configuredUrl);
   }
 
   if (window.location.hostname && window.location.hostname !== "tauri.localhost") {
@@ -46,8 +106,60 @@ export function getLocalMasterWsUrl() {
   return apiUrl.toString();
 }
 
+export function getDefaultPairingUrl() {
+  return getLocalMasterUrl();
+}
+
+export function loadLocalMasterIdentity(baseUrl = getLocalMasterUrl()) {
+  return readJsonFrom<LocalMasterIdentity>(baseUrl, "/api/local-master/identity");
+}
+
+export function startPairingSession(request: { local_master_url?: string } = {}, baseUrl = getLocalMasterUrl()) {
+  return writeJsonFrom<PairingSession>(baseUrl, "/api/local-master/pairing-sessions", { request });
+}
+
+export async function pairTerminal(baseUrl: string, request: {
+  code: string;
+  terminal_name: string;
+  role?: "POS_TERMINAL" | "MASTER_POS";
+  device_fingerprint?: string;
+}) {
+  const pairingConfig = await writeJsonFrom<TerminalPairingConfig>(baseUrl, "/api/local-master/pair", {
+    request: {
+      ...request,
+      local_master_url: normalizeBaseUrl(baseUrl),
+    },
+  });
+
+  await saveTerminalPairingConfig(pairingConfig);
+
+  return pairingConfig;
+}
+
+export async function sendTerminalHeartbeat(config = runtimeTerminalConfig) {
+  if (!config) {
+    return null;
+  }
+
+  const terminal = await writeJsonFrom<TerminalRecord>(
+    config.localMasterUrl,
+    "/api/local-master/terminals/" + encodeURIComponent(config.terminalId) + "/heartbeat",
+    { request: { terminal_secret: config.terminalSecret } },
+  );
+  const updatedConfig = { ...config, lastSeenAt: terminal.last_seen_at };
+
+  await saveTerminalPairingConfig(updatedConfig);
+
+  return terminal;
+}
+
 async function readJson<T>(path: string): Promise<T> {
-  const response = await fetch(getLocalMasterUrl() + path);
+  assertLocalMasterAllowed();
+  return readJsonFrom<T>(getLocalMasterUrl(), path);
+}
+
+async function readJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
+  const response = await fetch(normalizeBaseUrl(baseUrl) + path);
 
   if (!response.ok) {
     throw new Error(String(response.status) + " " + response.statusText);
@@ -63,7 +175,12 @@ async function readJson<T>(path: string): Promise<T> {
 }
 
 async function writeJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(getLocalMasterUrl() + path, {
+  assertLocalMasterAllowed();
+  return writeJsonFrom<T>(getLocalMasterUrl(), path, body);
+}
+
+async function writeJsonFrom<T>(baseUrl: string, path: string, body: unknown): Promise<T> {
+  const response = await fetch(normalizeBaseUrl(baseUrl) + path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -72,7 +189,8 @@ async function writeJson<T>(path: string, body: unknown): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(String(response.status) + " " + response.statusText);
+    const message = await response.text().catch(() => "");
+    throw new Error(message || String(response.status) + " " + response.statusText);
   }
 
   return (await response.json()) as T;
@@ -112,7 +230,6 @@ export function completeMockPayment(
   return writeJson<CompletedMockPayment>("/api/mock-payments/complete", { request });
 }
 
-
 export function loadPosSettings() {
   return readJson<PosSettingsFile>("/api/pos-settings");
 }
@@ -137,6 +254,7 @@ export function saveDayClose(request: {
 }) {
   return writeJson<SavedDayClose>("/api/day-close", { request });
 }
+
 export function subscribeLocalMasterEvents(
   onEvent: (event: LocalMasterEvent) => void,
 ) {
@@ -152,8 +270,9 @@ export function subscribeLocalMasterEvents(
         JSON.stringify({
           type: "HELLO",
           payload: {
-            role: "POS_SHELL",
-            deviceId: "pos-shell",
+            role: runtimeTerminalConfig?.terminalRole ?? "POS_SHELL",
+            deviceId: runtimeTerminalConfig?.terminalId ?? "pos-shell",
+            localMasterInstanceId: runtimeTerminalConfig?.localMasterInstanceId,
           },
         }),
       );
@@ -195,3 +314,72 @@ export function subscribeLocalMasterEvents(
   };
 }
 
+async function loadTerminalConfig() {
+  const tauriConfig = await loadTauriTerminalConfig();
+
+  if (tauriConfig) {
+    writeLocalStorageTerminalConfig(tauriConfig);
+    return tauriConfig;
+  }
+
+  return readLocalStorageTerminalConfig();
+}
+
+async function invokeTauri<T>(command: string, args?: Record<string, unknown>) {
+  if (!window.__TAURI_INTERNALS__) {
+    return null;
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+
+  return invoke<T>(command, args);
+}
+
+async function loadTauriTerminalConfig() {
+  try {
+    return await invokeTauri<TerminalPairingConfig | null>("load_terminal_config");
+  } catch (error) {
+    console.warn("Could not load Tauri terminal config.", error);
+    return null;
+  }
+}
+
+async function saveTauriTerminalConfig(config: TerminalPairingConfig) {
+  try {
+    await invokeTauri<void>("save_terminal_config", { config });
+  } catch (error) {
+    console.warn("Could not save Tauri terminal config.", error);
+  }
+}
+
+async function clearTauriTerminalConfig() {
+  try {
+    await invokeTauri<void>("clear_terminal_config");
+  } catch (error) {
+    console.warn("Could not clear Tauri terminal config.", error);
+  }
+}
+
+function assertLocalMasterAllowed() {
+  if (localMasterBlockedReason) {
+    throw new Error(localMasterBlockedReason);
+  }
+}
+
+function readLocalStorageTerminalConfig() {
+  try {
+    const raw = window.localStorage.getItem(terminalConfigStorageKey);
+
+    return raw ? (JSON.parse(raw) as TerminalPairingConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalStorageTerminalConfig(config: TerminalPairingConfig) {
+  window.localStorage.setItem(terminalConfigStorageKey, JSON.stringify(config));
+}
+
+function normalizeBaseUrl(url: string) {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}

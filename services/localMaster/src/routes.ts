@@ -1,13 +1,22 @@
-﻿import type { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import {
   completeMockPaymentSchema,
+  createPairingSessionSchema,
   currentBusinessDateSchema,
   dayClosePreviewSchema,
+  pairTerminalSchema,
   createOrderSchema,
   createOrderSnapshotSchema,
-  saveDayCloseSchema
+  saveDayCloseSchema,
+  terminalHeartbeatSchema
 } from "./schemas.js";
+import {
+  createPairingSession,
+  getLocalMasterIdentity,
+  pairTerminal,
+  recordTerminalHeartbeat
+} from "./pairing.js";
 import {
   completeMockPayment,
   getCurrentBusinessDate,
@@ -29,7 +38,10 @@ import type {
   DayClosePreviewRequest,
   CreateOrderSnapshotRequest,
   SaveDayCloseRequest,
-  OrderDraft
+  OrderDraft,
+  PairTerminalRequest,
+  PairingSessionRequest,
+  TerminalHeartbeatRequest
 } from "./types.js";
 import { broadcast, connectedClientCount } from "./realtime.js";
 
@@ -39,11 +51,34 @@ type PosRequestBody<TRequest> = {
 
 export async function registerApiRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({
-    ok: true,
-    service: "localMaster",
+    ...getLocalMasterIdentity(),
     clients: connectedClientCount(),
     orders: listOpenOrders().length
   }));
+
+  app.get("/api/local-master/identity", async () => ({
+    ...getLocalMasterIdentity(),
+    clients: connectedClientCount(),
+    orders: listOpenOrders().length
+  }));
+
+  app.post<{ Body: PosRequestBody<PairingSessionRequest> }>(
+    "/api/local-master/pairing-sessions",
+    { schema: createPairingSessionSchema },
+    async (request, reply) => reply.code(201).send(createPairingSession(request.body.request))
+  );
+
+  app.post<{ Body: PosRequestBody<PairTerminalRequest> }>(
+    "/api/local-master/pair",
+    { schema: pairTerminalSchema },
+    async (request, reply) => reply.code(201).send(pairTerminal(request.body.request))
+  );
+
+  app.post<{ Params: { terminalId: string }; Body: PosRequestBody<TerminalHeartbeatRequest> }>(
+    "/api/local-master/terminals/:terminalId/heartbeat",
+    { schema: terminalHeartbeatSchema },
+    async (request) => recordTerminalHeartbeat(request.params.terminalId, request.body.request)
+  );
 
   app.get("/api/catalog", async () => ({ data: listProducts() }));
 
@@ -119,4 +154,3 @@ export async function registerApiRoutes(app: FastifyInstance) {
     }
   );
 }
-

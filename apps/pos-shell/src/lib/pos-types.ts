@@ -1,3 +1,43 @@
+
+export type LocalMasterIdentity = {
+  ok: true;
+  service: "localMaster";
+  instance_id: string;
+  location_id: string;
+  port: number;
+  version: string;
+  clients?: number;
+  orders?: number;
+};
+
+export type PairingSession = {
+  code: string;
+  expires_at: number;
+  instance_id: string;
+  local_master_url: string | null;
+  location_id: string;
+};
+
+export type TerminalPairingConfig = {
+  localMasterUrl: string;
+  localMasterInstanceId: string;
+  terminalId: string;
+  terminalName: string;
+  terminalRole: string;
+  terminalSecret: string;
+  pairedAt: number;
+  lastSeenAt: number;
+};
+
+export type TerminalRecord = {
+  id: string;
+  instance_id: string;
+  name: string;
+  role: string;
+  device_fingerprint: string | null;
+  paired_at: number;
+  last_seen_at: number;
+};
 export type PosProduct = {
   id: string;
   product_type: "BASIC" | "SERVICE";
