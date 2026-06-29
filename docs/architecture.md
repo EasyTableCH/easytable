@@ -1,18 +1,18 @@
-# POS-Hospitality-System: Neue Zielarchitektur
+# POS-Hospitality-System: Zielarchitektur
 
-> **Version:** 2.0
+> **Version:** 3.0
 > **Prinzip:** Erst lokal stabil, dann Cloud.
-> **Kernidee:** POS-Shell ist die lokale Wahrheit. Local Realtime Manager verbindet Staff, KDS, Drucker und später Cloud.
+> **Kernidee:** Local Master ist die lokale Wahrheit. POS-Shell, Staff, KDS und Manager sind Clients gegen diesen lokalen Core.
 
 ---
 
 ## 1. Grundprinzip
 
-Das System wird nicht zuerst als Cloud-System gebaut, sondern als **lokales POS-System**, das auch ohne Internet vollständig funktioniert.
+Das System wird als lokales POS-System gebaut, das auch ohne Internet vollstaendig funktioniert.
 
 Die zentrale Regel:
 
-> **Die POS-Shell ist die lokale Source of Truth.**
+> **Der Local Master ist die lokale Source of Truth.**
 
 Alle finanzkritischen und operativen Daten werden zuerst lokal gespeichert:
 
@@ -20,47 +20,24 @@ Alle finanzkritischen und operativen Daten werden zuerst lokal gespeichert:
 * Order Items
 * Zahlungen
 * Bons
-* Tagesabschlüsse
+* Tagesabschluesse
 * Cash Sessions
 * Stornos
-* Küchenstatus
+* Kuechenstatus
+* Print Jobs
+* Sync Outbox
 
-Cloud-Sync kommt später und ist nicht Voraussetzung für den Betrieb vor Ort.
+Cloud-Sync kommt spaeter und ist nicht Voraussetzung fuer den Betrieb vor Ort.
 
 ---
 
 ## 2. Hauptkomponenten
 
-### 2.1 POS-Shell
+### 2.1 Local Master
 
-Die POS-Shell ist die Desktop-App der Kasse.
+Der Local Master ist der lokale Backend-Core eines Standorts.
 
-Technologie:
-
-* Tauri
-* React
-* SQLite lokal auf Dateisystem
-* läuft auf Windows/Linux/Mac
-* später Autostart/Kiosk-Modus möglich
-
-Aufgaben:
-
-* Kassenoberfläche
-* Produkt-Auswahl
-* Warenkorb
-* Bestellung erstellen
-* Zahlung erfassen
-* Tagesabschluss
-* lokale SQLite-Datenbank verwalten
-* lokale Wahrheit speichern
-
-Die POS-Shell ist die operative Master-Komponente.
-
----
-
-### 2.2 Local Realtime Manager
-
-Der Local Realtime Manager läuft auf demselben Gerät wie die POS-Shell.
+Bei kleinen Kunden laeuft er auf demselben PC wie die POS-Shell. Bei mehreren Kassen laeuft er auf einem lokalen Master-PC, und alle anderen Kassen/Clients sprechen mit seiner API.
 
 Technologie:
 
@@ -68,54 +45,85 @@ Technologie:
 * Fastify
 * REST API
 * WebSocket Server
-* lokales Netzwerk
-* Print-Routing
+* lokale SQLite-Datenbank
+* Migrationen und Seeds
+* Print Queue / Print Routing
+* spaeter Sync Outbox
 
 Aufgaben:
 
-* REST API für Staff/KDS/Manager bereitstellen
+* lokale SQLite-Datenbank besitzen
+* Migrationen und Seeds ausfuehren
+* REST API fuer POS-Shell, Staff, KDS und Manager bereitstellen
 * WebSocket-Verbindungen verwalten
 * Echtzeit-Events verteilen
-* Bestellungen von Staff-PWA entgegennehmen
-* Bestellungen an POS-Shell/lokale DB übergeben
-* Küchenaufträge an KDS senden
-* Druckaufträge an Bondrucker/Küchendrucker routen
-* Kassenschublade ansteuern
-* Gerätestatus verwalten
-* später Cloud-Sync anstossen
+* Bestellungen autoritativ speichern
+* Zahlungen autoritativ speichern
+* Tagesabschluss berechnen und speichern
+* Kuechenstatus speichern
+* Print Jobs erzeugen und routen
+* Geraetestatus verwalten
+* spaeter Cloud-Sync anstossen
 
 Wichtig:
 
-Der Local Realtime Manager ersetzt den alten Begriff `Print-Hub`.
+Der Local Master ersetzt den bisherigen Begriff `Local Realtime Manager` und den alten Begriff `Print-Hub`.
 
-Er ist nicht nur Druckserver, sondern die lokale Kommunikationszentrale.
+Er ist nicht nur WebSocket- oder Druckserver, sondern der lokale Core des Standorts.
+
+---
+
+### 2.2 POS-Shell
+
+Die POS-Shell ist die Desktop-Oberflaeche der Kasse.
+
+Technologie:
+
+* Tauri
+* React
+* laeuft auf Windows/Linux/Mac
+* spaeter Autostart/Kiosk-Modus moeglich
+
+Aufgaben:
+
+* Kassenoberflaeche
+* Tischplan anzeigen
+* Produkt-Auswahl
+* Warenkorb
+* Zahlung ausloesen
+* Tagesabschluss anzeigen und ausloesen
+* Echtzeit-Events vom Local Master empfangen
+
+Wichtig:
+
+Die POS-Shell besitzt keine eigene SQLite-Wahrheit mehr.
+
+Tauri bleibt Shell, Packaging-, Kiosk- und lokale Integrationsschicht. Datenlogik, Migrationen und Persistenz liegen im Local Master.
 
 ---
 
 ### 2.3 Staff PWA
 
-Die Staff PWA ist eine Web-App für Service-Mitarbeiter.
+Die Staff PWA ist eine mobile-first Web-App fuer Service-Mitarbeiter.
 
 Technologie:
 
 * React/Vite PWA
-* läuft auf iPad, Tablet, Laptop oder Handy
-* Verbindung zum Local Realtime Manager über lokales WLAN
+* laeuft auf iPad, Tablet, Laptop oder Handy
+* Verbindung zum Local Master ueber lokales WLAN
 
 Aufgaben:
 
-* Tisch auswählen
+* Tisch auswaehlen
 * Bestellung aufnehmen
-* Produkte hinzufügen
+* Produkte hinzufuegen
 * Notizen erfassen
-* Bestellung an Local Realtime Manager senden
+* Bestellung an Local Master senden
 * Statusupdates empfangen
 
 Wichtig:
 
-Die Staff PWA speichert höchstens lokale Entwürfe.
-
-Die finale Bestellung entsteht erst, wenn der Local Realtime Manager/POS-Shell sie bestätigt.
+Die Staff PWA speichert hoechstens lokale Entwuerfe. Eine finale Bestellung entsteht erst, wenn der Local Master sie bestaetigt.
 
 ---
 
@@ -126,25 +134,23 @@ Die KDS PWA ist das Kitchen Display System.
 Technologie:
 
 * React/Vite PWA
-* WebSocket-Verbindung zum Local Realtime Manager
+* WebSocket-Verbindung zum Local Master
 
 Aufgaben:
 
-* neue Küchenaufträge live anzeigen
-* Status ändern: `NEW → PREPARING → READY → SERVED`
-* Änderungen zurück an Local Realtime Manager senden
+* neue Kuechenauftraege live anzeigen
+* Status aendern: NEW -> PREPARING -> READY -> SERVED
+* Statusaenderungen an Local Master senden
 
 Wichtig:
 
-KDS ist nicht Master.
-
-KDS zeigt nur den aktuellen Zustand und sendet Statusänderungen zurück.
+KDS ist nicht Master. KDS zeigt den aktuellen Zustand und sendet Statusaenderungen zurueck. Local Master speichert final.
 
 ---
 
 ### 2.5 Manager PWA
 
-Die Manager PWA ist eine Web-App für Konfiguration und Berichte.
+Die Manager PWA ist eine Web-App fuer Konfiguration und Berichte.
 
 MVP-Aufgaben:
 
@@ -152,10 +158,10 @@ MVP-Aufgaben:
 * Tagesabschluss anzeigen
 * einfache Reports ansehen
 
-Spätere Aufgaben:
+Spaetere Aufgaben:
 
 * Produktverwaltung
-* Preisänderungen
+* Preisaenderungen
 * Benutzerverwaltung
 * Cloud-Reports
 * Multi-Standort-Verwaltung
@@ -164,129 +170,106 @@ Spätere Aufgaben:
 
 ### 2.6 Cloud Sync API
 
-Die Cloud kommt erst später.
-
-Technologie:
-
-* Node.js/Fastify
-* PostgreSQL
-* optional Redis
-* Auth/API Keys
-* später Manager Dashboard
+Die Cloud kommt spaeter.
 
 Aufgaben:
 
-* lokale Verkäufe sichern
-* Produkte/Preise zentral verwalten
-* Berichte erstellen
-* Multi-Standort ermöglichen
-* Wallee Webhooks empfangen
-* Geräte-Backups speichern
+* lokale Verkaeufe sichern
+* zentrale Reports bereitstellen
+* Produkt-/Preisupdates verteilen
+* Multi-Standort ermoeglichen
+* Remote Health und Versionsstatus anzeigen
 
 Wichtig:
 
-Staff/KDS sprechen nicht direkt mit der Cloud.
-
-Nur POS-Shell/Local Realtime Manager synchronisiert mit der Cloud.
+Staff, KDS und POS-Shell sprechen nicht direkt mit der Cloud. Nur der Local Master synchronisiert mit der Cloud.
 
 ---
 
-## 3. Neue Systemarchitektur
+## 3. Systemarchitektur
 
 ```text
                        CLOUD
-        ┌────────────────────────────────┐
-        │ Sync API / Reporting / Auth    │
-        │ PostgreSQL                     │
-        └───────────────▲────────────────┘
-                        │
-                        │ späterer Sync
-                        │
-┌───────────────────────┴────────────────────────┐
-│               POS-GERÄT / KASSEN-PC             │
-│                                                 │
-│  ┌───────────────────────────────────────────┐  │
-│  │              POS-Shell                    │  │
-│  │  Tauri + React                            │  │
-│  │  Lokale SQLite Source of Truth            │  │
-│  │                                           │  │
-│  │  - Orders                                 │  │
-│  │  - Payments                               │  │
-│  │  - Cash Sessions                          │  │
-│  │  - Day Close                              │  │
-│  │  - Product Snapshot                       │  │
-│  └──────────────────▲────────────────────────┘  │
-│                     │                           │
-│                     │ lokale IPC / HTTP         │
-│                     │                           │
-│  ┌──────────────────┴────────────────────────┐ │
-│  │        Local Realtime Manager             │ │
-│  │  Node.js + Fastify                        │ │
-│  │                                           │ │
-│  │  - REST API                               │ │
-│  │  - WebSocket Server                       │ │
-│  │  - Print Routing                          │ │
-│  │  - Device Coordination                    │ │
-│  │  - später Cloud Sync                      │ │
-│  └─────────────▲──────────────▲──────────────┘ │
-│                │              │                │
-│                │              │ USB/Serial     │
-│                │              ▼                │
-│                │        Bondrucker/Küche       │
-└────────────────┼───────────────────────────────┘
-                 │
-                 │ lokales WLAN
-                 │
-     ┌───────────┼───────────────┬────────────────┐
-     │           │               │                │
-     ▼           ▼               ▼                ▼
- Staff PWA     KDS PWA        Manager PWA      weitere Geräte
- iPad          Küche          Büro             optional
+       Sync API / Reporting / Auth / Updates
+                         ^
+                         |
+                  spaeterer Sync
+                         |
++------------------------------------------------+
+|              LOKALER STANDORT                  |
+|                                                |
+|  +------------------------------------------+  |
+|  |              Local Master                |  |
+|  | Node.js + Fastify                        |  |
+|  | REST API + WebSocket                     |  |
+|  | lokale SQLite Source of Truth            |  |
+|  |                                          |  |
+|  | - Orders                                 |  |
+|  | - Order Items                            |  |
+|  | - Payments                               |  |
+|  | - Cash Sessions                          |  |
+|  | - Day Close                              |  |
+|  | - Product Snapshot                       |  |
+|  | - Print Queue                            |  |
+|  | - Sync Outbox                            |  |
+|  +-------------------^----------------------+  |
+|                      |                         |
+|        REST / WebSocket / lokale API           |
+|                      |                         |
+|  +---------+  +---------+  +------+  +------+  |
+|  |POS-Shell|  |Staff PWA|  | KDS  |  |Manager| |
+|  |Tauri UI |  |Tablet   |  |PWA   |  |PWA    | |
+|  +---------+  +---------+  +------+  +------+  |
+|                                                |
+|  Drucker / Kueche / Bar haengen am Local Master|
++------------------------------------------------+
 ```
 
 ---
 
 ## 4. Kommunikationsprinzip
 
-Die Kommunikation im lokalen Netzwerk läuft über:
+Alle Clients sprechen mit dem Local Master.
 
-* REST für klare Aktionen
-* WebSocket für Echtzeit-Updates
+REST wird verwendet fuer klare Aktionen:
 
-### REST wird verwendet für:
-
+* Produktliste laden
+* Tischplan laden
 * Bestellung absenden
-* Zahlung starten
+* Zahlung starten oder abschliessen
+* Status aendern
+* Tagesabschluss starten/speichern
 * Bon erneut drucken
-* Status ändern
-* Produkte laden
-* Tagesabschluss starten
 
-### WebSocket wird verwendet für:
+WebSocket wird verwendet fuer Echtzeit-Updates:
 
-* neue Bestellung live an KDS senden
-* Kitchen Status live aktualisieren
-* Tischstatus live aktualisieren
-* Zahlungsstatus live anzeigen
-* Druckerstatus live anzeigen
-* Verbindung/Heartbeat prüfen
+* ORDER_CREATED
+* TABLE_UPDATED
+* PAYMENT_UPDATED
+* KITCHEN_STATUS_UPDATED
+* PRINT_JOB_UPDATED
+* DEVICE_CONNECTED
+* DEVICE_DISCONNECTED
+* HEARTBEAT
+
+Wichtig:
+
+WebSocket-Events sind Benachrichtigungen. Die bestaetigte Wahrheit liegt in SQLite und wird ueber REST/API erneut gelesen, wenn ein Client sicher synchron sein muss.
 
 ---
 
 ## 5. Beispiel: Staff nimmt Bestellung auf
 
-### Ablauf
-
 ```text
 Staff-Mitarbeiter nimmt Bestellung auf
-→ Staff PWA sendet REST Call an Local Realtime Manager
-→ Local Realtime Manager validiert Bestellung
-→ POS-Shell/lokale SQLite speichert Bestellung
-→ Local Realtime Manager erzeugt Events
-→ KDS erhält Bestellung live per WebSocket
-→ Druckjob wird für Küche/Bar erzeugt
-→ Bondrucker druckt Küchenbon
-→ Staff PWA erhält Bestätigung mit Order Number
+-> Staff PWA sendet REST Call an Local Master
+-> Local Master validiert Bestellung
+-> Local Master speichert Bestellung in lokaler SQLite
+-> Local Master erzeugt Events
+-> POS-Shell erhaelt TABLE_UPDATED / ORDER_CREATED
+-> KDS erhaelt ORDER_CREATED
+-> Print Job wird fuer Kueche/Bar erzeugt
+-> Staff PWA erhaelt Bestaetigung mit Order Number
 ```
 
 ---
@@ -302,398 +285,216 @@ Content-Type: application/json
 {
   "source": "STAFF",
   "deviceId": "staff-ipad-01",
-  "tableId": "table-5",
+  "tableId": "table_basilica_bar_1",
   "guestCount": 4,
   "items": [
     {
-      "productId": "prod-pizza-margherita",
+      "productId": "prod_shisha_standard",
       "quantity": 2,
-      "notes": "eine ohne Zwiebeln"
+      "notes": "einmal Premium Head"
     },
     {
-      "productId": "prod-cola",
+      "productId": "prod_chinotto",
       "quantity": 3
     }
   ]
 }
 ```
 
-### Antwort
+Antwort:
 
 ```json
 {
   "success": true,
   "order": {
-    "id": "ord_01J...",
-    "orderNumber": "T-0042",
-    "tableName": "Tisch 5",
+    "id": "ord_...",
+    "orderNumber": "L-0042",
+    "tableName": "1",
     "status": "OPEN",
-    "total": 4950
+    "total": 8100
   }
 }
 ```
 
 ---
 
-## 7. Beispiel WebSocket Event: Neue Bestellung für KDS
+## 7. Lokale Datenverantwortung
 
-```json
-{
-  "type": "ORDER_CREATED",
-  "payload": {
-    "orderId": "ord_01J...",
-    "orderNumber": "T-0042",
-    "tableName": "Tisch 5",
-    "items": [
-      {
-        "name": "Pizza Margherita",
-        "quantity": 2,
-        "notes": "eine ohne Zwiebeln",
-        "station": "KITCHEN"
-      },
-      {
-        "name": "Cola",
-        "quantity": 3,
-        "station": "BAR"
-      }
-    ],
-    "createdAt": 1719324000000
-  }
-}
-```
+| Bereich           | Master                         |
+| ----------------- | ------------------------------ |
+| Bestellungen      | Local Master / lokale SQLite   |
+| Zahlungen         | Local Master / lokale SQLite   |
+| Bon-History       | Local Master / lokale SQLite   |
+| Tagesabschluss    | Local Master / lokale SQLite   |
+| Kuechenstatus     | Local Master / lokale SQLite   |
+| Print Queue       | Local Master / lokale SQLite   |
+| Sync Outbox       | Local Master / lokale SQLite   |
+| Produkte MVP      | Local Master lokal             |
+| Produkte spaeter  | Cloud, Local Master pullt      |
+| Staff-Entwuerfe   | Staff PWA lokal bis abgesendet |
+| KDS-Anzeige       | Cache/View                     |
+| Reporting spaeter | Cloud                          |
+
+Die POS-Shell darf keine parallele SQLite-Wahrheit fuehren.
 
 ---
 
-## 8. Netzwerkbedingungen
+## 8. Multi-Kassen-Modell
 
-Damit das System lokal ohne Internet funktioniert, müssen diese Bedingungen erfüllt sein:
+Ein Standort hat genau einen lokalen Master.
 
-### Pflicht
-
-* POS-Gerät, Staff-Geräte, KDS und Drucker sind im gleichen lokalen Netzwerk
-* Local Realtime Manager ist unter stabiler Adresse erreichbar
-* Firewall erlaubt eingehende Verbindungen auf dem POS-Gerät
-* Port für API/WebSocket ist offen, z. B. `3000`
-* Drucker sind über USB, Serial, LAN oder Netzwerkdruck erreichbar
-
-### Empfohlen
-
-* feste IP für POS-Gerät, z. B. `192.168.1.10`
-* oder lokaler Hostname, z. B. `pos.local`
-* DHCP Reservation im Router statt manuell gesetzter IP
-* separates Restaurant-WLAN/VLAN für POS-Geräte
-* kein Client-Isolation-Modus im WLAN
-* stabile 5 GHz/2.4 GHz Abdeckung
-* USV für Kassen-PC und Netzwerkgeräte
-
-### Wichtig
-
-Die POS-Shell muss Staff-Geräte nicht vorher kennen.
-
-Die Staff PWA muss nur wissen, wo der Local Realtime Manager erreichbar ist.
-
-Beispiel:
+Kleine Installation:
 
 ```text
-http://192.168.1.10:3000
+Kassen-PC 1 = Local Master + SQLite + POS-Shell
 ```
 
-oder
+Groessere Installation:
 
 ```text
-http://pos.local:3000
+Kassen-PC 1 = Local Master + SQLite + optional POS-Shell
+Kassen-PC 2 = POS-Shell Client
+Kassen-PC 3 = POS-Shell Client
+Tablets     = Staff/KDS/Manager Clients
 ```
+
+Mehrere gleichzeitige SQLite-Master pro Standort werden vermieden. Sonst entstehen Konflikte bei Ordernummern, Tischstatus, Zahlungen, Cash Sessions, Tagesabschluss und Sync.
 
 ---
 
-## 9. Lokale Datenverantwortung
+## 9. Update- und Betriebsregeln
 
-| Bereich          | Master                            |
-| ---------------- | --------------------------------- |
-| Bestellungen     | POS-Shell / lokale SQLite         |
-| Zahlungen        | POS-Shell / lokale SQLite         |
-| Bon-History      | POS-Shell / lokale SQLite         |
-| Tagesabschluss   | POS-Shell / lokale SQLite         |
-| Küchenstatus     | POS-Shell / lokale SQLite         |
-| Staff-Entwürfe   | Staff PWA lokal, bis abgesendet   |
-| KDS-Anzeige      | Cache/View                        |
-| Produkte MVP     | POS-Shell lokal                   |
-| Produkte später  | Cloud, POS-Shell pullt Änderungen |
-| Reporting später | Cloud                             |
+Fuer viele Kundeninstallationen gelten diese Regeln:
+
+1. Nur Local Master migriert SQLite.
+2. Vor Schema-Migrationen wird ein lokales Backup erstellt.
+3. Migrationen sind moeglichst additiv und rueckwaertskompatibel.
+4. Clients pruefen Local-Master-Version und Feature-Faehigkeiten.
+5. Local Master stellt `/health` und spaeter `/version` bereit.
+6. Cloud sieht spaeter Core-Version, DB-Schema-Version und Sync-Status.
+7. Sync und Druck laufen aus persistenten Queues/Outboxen, nicht nur aus Runtime-Events.
+8. Updates muessen abbrechbar oder reparierbar sein, ohne lokale Verkaufsdaten zu verlieren.
 
 ---
 
 ## 10. MVP-Reihenfolge
 
-Es wird nicht alles parallel gebaut.
-
 Die Regel lautet:
 
-> Immer ein vollständiges End-to-End-Stück bauen.
+> Immer ein vollstaendiges End-to-End-Stueck bauen.
 
----
-
-### MVP 1: Lokale POS-Shell mit Barzahlung
+### MVP 1: Local Master Core + POS-Shell Barverkauf
 
 Ziel:
 
-Ein einzelner Kassen-PC kann komplett verkaufen.
+Ein einzelner Kassen-PC kann komplett verkaufen. Local Master besitzt SQLite, POS-Shell ist UI-Client.
 
-Enthält:
+Enthaelt:
 
-* Tauri POS-Shell
+* Local Master mit Node/Fastify
 * lokale SQLite-Datenbank
-* Produkte seeden
-* Produkt-Grid
-* Warenkorb
-* Bestellung speichern
-* Barzahlung
-* Rückgeldberechnung
-* Bon als Printjob
+* Migrationen und Seeds
+* REST API fuer POS-Shell
+* POS-Shell Produkt-Grid
+* POS-Shell Warenkorb
+* Bestellung ueber Local Master speichern
+* Barzahlung ueber Local Master speichern
+* Rueckgeldberechnung
+* Print Job erzeugen
 * einfacher Tagesabschluss
 
 Nicht enthalten:
 
-* Staff PWA
-* KDS
+* Staff PWA als produktiver Client
+* KDS als produktiver Client
 * Cloud
 * Wallee
 * QR Payment
 * Multi-Device Sync
 
----
-
-### MVP 2: Local Realtime Manager
+### MVP 2: Multi-Device Local Master
 
 Ziel:
 
-Die lokale Kasse bekommt eine API und Echtzeit-Zentrale.
+Staff/KDS/Manager und optional weitere POS-Shells sprechen mit demselben Local Master.
 
-Enthält:
+Enthaelt:
 
-* Node/Fastify Server
-* REST API
-* WebSocket Server
-* Verbindung zur lokalen SQLite/POS-Shell
-* Print Routing
-* Drucker Mock
-* Geräte Heartbeat
+* WebSocket Events
+* Geraete Heartbeat
+* Staff Order Flow
+* KDS Status Flow
+* Print Routing Mock
+* LAN-Konfiguration fuer Master-Adresse
 
----
-
-### MVP 3: Staff PWA
+### MVP 3: Finanz- und Tagesabschluss-Haertung
 
 Ziel:
 
-Service-Mitarbeiter können im WLAN Bestellungen aufnehmen.
+Kasse wird finanztechnisch belastbar.
 
-Enthält:
+Enthaelt:
 
-* Staff View
-* Produktliste von Local Realtime Manager laden
-* Tisch auswählen
-* Bestellung erfassen
-* Bestellung per REST absenden
-* Bestätigung anzeigen
-* lokale Drafts bei Verbindungsverlust
-
----
-
-### MVP 4: KDS PWA
-
-Ziel:
-
-Küche sieht Bestellungen live.
-
-Enthält:
-
-* WebSocket-Verbindung
-* neue Kitchen Orders live anzeigen
-* Status ändern
-* Status zurück an Local Realtime Manager senden
-* Kitchen-Bon optional drucken
-
----
-
-### MVP 5: Tagesabschluss sauber machen
-
-Ziel:
-
-Kasse wird finanztechnisch brauchbar.
-
-Enthält:
-
-* Cash Session öffnen
+* Cash Session oeffnen
 * Startgeld
-* Barverkäufe
+* Barverkaeufe
 * Cash In / Cash Out
 * Tagesabschluss
 * Soll/Ist-Vergleich
 * Differenz
 * Tagesreport
+* Audit-Metadaten fuer Zahlungen
 
----
-
-### MVP 6: Cloud Sync
+### MVP 4: Cloud Sync
 
 Ziel:
 
 Lokale Daten werden gesichert und zentral auswertbar.
 
-Enthält:
+Enthaelt:
 
-* Sync API
-* PostgreSQL
+* Sync Outbox
 * Push von Orders/Payments/Day Close
-* Pull von Produkten/Preisen
-* Konfliktregeln
-* Retry Queue
-* Sync Status
+* Remote Health
+* zentrale Reports
+* Produkt-/Preisupdates spaeter
 
 ---
 
-### MVP 7: Payment Integration
+## 11. Kritische Regeln
 
-Ziel:
-
-Kartenzahlung/QR-Zahlung integrieren.
-
-Enthält:
-
-* Wallee QR
-* Wallee Webhook
-* Terminal Integration nur nach technischer Verifikation
-* Payment Status Events
-* Refunds/Stornos
-
----
-
-## 11. Minimales SQLite-Schema für MVP 1
-
-```sql
-CREATE TABLE products (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  price INTEGER NOT NULL,
-  tax_rate_bps INTEGER NOT NULL DEFAULT 810,
-  is_available INTEGER DEFAULT 1,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER
-);
-
-CREATE TABLE orders (
-  id TEXT PRIMARY KEY,
-  order_number TEXT UNIQUE NOT NULL,
-  status TEXT NOT NULL DEFAULT 'OPEN',
-  subtotal INTEGER NOT NULL DEFAULT 0,
-  tax_total INTEGER NOT NULL DEFAULT 0,
-  total INTEGER NOT NULL DEFAULT 0,
-  payment_status TEXT NOT NULL DEFAULT 'UNPAID',
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER,
-  closed_at INTEGER
-);
-
-CREATE TABLE order_items (
-  id TEXT PRIMARY KEY,
-  order_id TEXT NOT NULL,
-  product_id TEXT,
-  product_name TEXT NOT NULL,
-  quantity INTEGER NOT NULL,
-  unit_price INTEGER NOT NULL,
-  tax_rate_bps INTEGER NOT NULL,
-  tax_amount INTEGER NOT NULL,
-  total_price INTEGER NOT NULL,
-  station TEXT DEFAULT 'KITCHEN',
-  notes TEXT,
-  created_at INTEGER NOT NULL
-);
-
-CREATE TABLE payments (
-  id TEXT PRIMARY KEY,
-  order_id TEXT NOT NULL,
-  amount INTEGER NOT NULL,
-  method TEXT NOT NULL CHECK(method IN ('CASH','CARD_MANUAL')),
-  status TEXT NOT NULL CHECK(status IN ('COMPLETED','FAILED')),
-  created_at INTEGER NOT NULL
-);
-
-CREATE TABLE cash_sessions (
-  id TEXT PRIMARY KEY,
-  opened_at INTEGER NOT NULL,
-  closed_at INTEGER,
-  opening_cash INTEGER NOT NULL DEFAULT 0,
-  closing_cash_expected INTEGER,
-  closing_cash_counted INTEGER,
-  difference INTEGER,
-  status TEXT NOT NULL DEFAULT 'OPEN'
-);
-
-CREATE TABLE cash_movements (
-  id TEXT PRIMARY KEY,
-  cash_session_id TEXT NOT NULL,
-  type TEXT NOT NULL CHECK(type IN ('OPENING','SALE','CASH_IN','CASH_OUT','CLOSING')),
-  amount INTEGER NOT NULL,
-  reason TEXT,
-  created_at INTEGER NOT NULL
-);
-
-CREATE TABLE print_jobs (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK(type IN ('RECEIPT','KITCHEN_SLIP','BAR_SLIP','DRAWER')),
-  payload_json TEXT NOT NULL,
-  station TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  error_message TEXT,
-  created_at INTEGER NOT NULL,
-  completed_at INTEGER
-);
-
-CREATE TABLE day_closes (
-  id TEXT PRIMARY KEY,
-  date TEXT NOT NULL UNIQUE,
-  total_cash INTEGER NOT NULL,
-  total_card INTEGER NOT NULL,
-  order_count INTEGER NOT NULL,
-  item_count INTEGER NOT NULL,
-  report_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-```
+1. Local Master ist die lokale Source of Truth.
+2. Nur Local Master besitzt und migriert die lokale SQLite-Datenbank.
+3. POS-Shell, Staff PWA, KDS und Manager PWA sind Clients gegen die Local-Master-API.
+4. Staff PWA darf Bestellungen vorschlagen, aber nicht final autoritativ speichern.
+5. KDS darf Statusaenderungen senden, aber Local Master speichert final.
+6. Ohne Internet muss Barverkauf, Bon-Druck und Tagesabschluss funktionieren.
+7. Ohne Local Master duerfen Clients nur Drafts speichern, keine finalen Verkaeufe.
+8. Alle Preise werden als Integer in Rappen/Cents gespeichert.
+9. Order Items speichern Produktname, Preis und Steuer als Snapshot.
+10. Cloud-Sync kommt erst, wenn lokale Kasse stabil ist.
+11. Wallee/Terminal kommt erst nach technischer Verifikation.
+12. Druckauftraege laufen immer ueber Queue.
+13. Tagesabschluesse und Zahlungen muessen nachvollziehbar bleiben.
+14. Mehrere SQLite-Master pro Standort sind kein Ziel.
 
 ---
 
-## 12. Kritische Regeln
+## 12. Naechster technischer Schnitt
 
-1. POS-Shell ist die lokale Source of Truth.
-2. Local Realtime Manager ist API-, WebSocket- und Print-Zentrale.
-3. Staff PWA darf Bestellungen vorschlagen, aber nicht final autoritativ speichern.
-4. KDS darf Statusänderungen senden, aber POS-Shell speichert final.
-5. Ohne Internet muss Barverkauf, Bon-Druck und Tagesabschluss funktionieren.
-6. Ohne POS-Shell darf Staff PWA nur Drafts speichern, keine finalen Verkäufe.
-7. Alle Preise werden als Integer gespeichert.
-8. Order Items speichern Produktname, Preis und Steuer als Snapshot.
-9. Cloud-Sync kommt erst, wenn lokale Kasse stabil ist.
-10. Wallee/Terminal kommt erst nach MVP und technischer Verifikation.
-11. Druckaufträge laufen immer über Queue.
-12. Tagesabschlüsse und Zahlungen müssen nachvollziehbar bleiben.
-
----
-
-## 13. Finale Empfehlung
-
-Die Entwicklung startet nicht mit Cloud, Wallee oder Multi-Device-Komplexität.
-
-Die Entwicklung startet mit diesem End-to-End-Flow:
+Der naechste Umbau entkoppelt POS-Shell von Tauri-DB-Commands:
 
 ```text
-Produkt auswählen
-→ Warenkorb
-→ Bar bezahlen
-→ Rückgeld berechnen
-→ Bon erzeugen
-→ Verkauf lokal speichern
-→ Tagesabschluss zeigt korrekte Zahlen
+POS-Shell UI
+-> Local-Master API Client
+-> Local Master
+-> SQLite
 ```
 
-Erst wenn dieser Ablauf stabil ist, werden Staff PWA, KDS, Local Realtime Manager, Cloud Sync und Payment Integrationen ergänzt.
+Konkrete Reihenfolge:
+
+1. Local Master bekommt POS-kompatible APIs fuer Katalog, Varianten, Tischplan und Orders.
+2. POS-Shell liest Tischplan und Katalog ueber Local Master.
+3. POS-Shell schreibt Orders ueber Local Master.
+4. POS-Shell subscribed auf WebSocket Events und refreshed betroffene Views.
+5. Rust/Tauri-DB-Commands werden erst entfernt, wenn die UI komplett ueber Local Master laeuft.

@@ -6,15 +6,17 @@
     "workspaces":  [
                        "apps/*",
                        "packages/*",
-                       "services/localRealtimeManager"
+                       "services/localMaster"
                    ],
     "scripts":  {
-                    "dev":  "npm run dev:realtime",
+                    "dev":  "npm run dev:master",
                     "dev:pos":  "npm run dev -w apps/pos-shell",
                     "dev:staff":  "npm run dev -w apps/staff",
-                    "dev:realtime":  "npm run dev -w services/localRealtimeManager",
+                    "dev:master":  "npm run dev -w services/localMaster",
+                    "dev:realtime":  "npm run dev:master",
                     "build:pos":  "npm run build -w apps/pos-shell",
                     "build:staff":  "npm run build -w apps/staff",
-                    "build:realtime":  "npm run build -w services/localRealtimeManager"
+                    "build:master":  "npm run build -w services/localMaster",
+                    "build:realtime":  "npm run build:master"
                 }
 }

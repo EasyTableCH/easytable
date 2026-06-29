@@ -1,12 +1,15 @@
-import { DoorOpenIcon, EllipsisIcon, ReceiptTextIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+﻿import { DoorOpenIcon, EllipsisIcon, ReceiptTextIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
 import { cn } from "@easytable/ui/lib/utils";
 
 import type { PosScreen } from "../App";
+import {
+  loadTableLayout,
+  subscribeLocalMasterEvents,
+} from "../lib/local-master-client";
 import { formatChf } from "../lib/money";
 import type {
   TableContext,
@@ -32,6 +35,8 @@ const navItems = [
   active: boolean;
 }[];
 
+const tablePlanReloadEvents = new Set(["ORDER_CREATED", "TABLE_UPDATED"]);
+
 export function TablePlanScreen({
   onNavigate,
   onSelectTable,
@@ -42,46 +47,59 @@ export function TablePlanScreen({
   const [isLoadingLayout, setIsLoadingLayout] = useState(true);
   const [layoutNotice, setLayoutNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadLayout() {
+  const loadLayout = useCallback(async (showLoadingState = true) => {
+    if (showLoadingState) {
       setIsLoadingLayout(true);
-      setLayoutNotice(null);
-
-      try {
-        await invoke("initialize_pos_database");
-        const tableLayout = await invoke<TableLayout>("list_table_layout");
-        const firstFloor = tableLayout.floors[0];
-        const firstArea = firstFloor?.areas[0];
-
-        if (isMounted) {
-          setLayout(tableLayout);
-          setActiveFloorId(firstFloor?.id ?? "");
-          setActiveAreaId(firstArea?.id ?? "");
-        }
-      } catch (error) {
-        console.warn("Could not load table layout from SQLite.", error);
-
-        if (isMounted) {
-          setLayout(null);
-          setActiveFloorId("");
-          setActiveAreaId("");
-          setLayoutNotice("Tischplan konnte nicht geladen werden.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingLayout(false);
-        }
-      }
     }
 
-    void loadLayout();
+    setLayoutNotice(null);
 
-    return () => {
-      isMounted = false;
-    };
+    try {
+      const tableLayout = await loadTableLayout();
+      const firstFloor = tableLayout.floors[0];
+      const firstArea = firstFloor?.areas[0];
+
+      setLayout(tableLayout);
+      setActiveFloorId((currentFloorId) => {
+        if (tableLayout.floors.some((floor) => floor.id === currentFloorId)) {
+          return currentFloorId;
+        }
+
+        return firstFloor?.id ?? "";
+      });
+      setActiveAreaId((currentAreaId) => {
+        const areas = tableLayout.floors.flatMap((floor) => floor.areas);
+
+        if (areas.some((area) => area.id === currentAreaId)) {
+          return currentAreaId;
+        }
+
+        return firstArea?.id ?? "";
+      });
+    } catch (error) {
+      console.warn("Could not load table layout from Local Master.", error);
+      setLayout(null);
+      setActiveFloorId("");
+      setActiveAreaId("");
+      setLayoutNotice("Tischplan konnte nicht geladen werden.");
+    } finally {
+      if (showLoadingState) {
+        setIsLoadingLayout(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    void loadLayout();
+  }, [loadLayout]);
+
+  useEffect(() => {
+    return subscribeLocalMasterEvents((event) => {
+      if (tablePlanReloadEvents.has(event.type)) {
+        void loadLayout(false);
+      }
+    });
+  }, [loadLayout]);
 
   const activeFloor = useMemo<TableLayoutFloor | undefined>(
     () => layout?.floors.find((floor) => floor.id === activeFloorId),

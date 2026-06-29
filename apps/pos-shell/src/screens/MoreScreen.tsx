@@ -1,4 +1,4 @@
-import {
+﻿import {
   DoorOpenIcon,
   EllipsisIcon,
   ReceiptTextIcon,
@@ -6,11 +6,11 @@ import {
   WalletCardsIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@easytable/ui/components/button";
 import { cn } from "@easytable/ui/lib/utils";
 
 import type { PosScreen } from "../App";
+import { loadPosSettings } from "../lib/local-master-client";
 import type { PosSettingsFile } from "../lib/pos-types";
 import { CashCloseScreen } from "./CashCloseScreen";
 
@@ -55,8 +55,7 @@ export function MoreScreen({ onNavigate }: MoreScreenProps) {
 
     async function loadSettings() {
       try {
-        const loadedSettings =
-          await invoke<PosSettingsFile>("load_pos_settings");
+        const loadedSettings = await loadPosSettings();
 
         if (isMounted) {
           setSettingsFile(loadedSettings);
@@ -162,3 +161,4 @@ export function MoreScreen({ onNavigate }: MoreScreenProps) {
     </main>
   );
 }
+

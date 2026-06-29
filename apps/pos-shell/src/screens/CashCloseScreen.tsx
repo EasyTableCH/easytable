@@ -1,12 +1,17 @@
-import { ArrowLeftIcon, SaveIcon } from "lucide-react";
+﻿import { ArrowLeftIcon, SaveIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@easytable/ui/components/button";
 import { cn } from "@easytable/ui/lib/utils";
 
 import { TouchNumberPad } from "../components/TouchNumberPad";
+import {
+  loadCurrentBusinessDate,
+  loadDayClosePreview,
+  loadPosSettings,
+  saveDayClose,
+} from "../lib/local-master-client";
 import { formatChf } from "../lib/money";
-import type { DayClosePreview, PosSettingsFile, SavedDayClose } from "../lib/pos-types";
+import type { DayClosePreview } from "../lib/pos-types";
 
 type CashCloseScreenProps = {
   onBack: () => void;
@@ -46,17 +51,12 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
 
     async function loadInitialSettings() {
       try {
-        const settingsFile = await invoke<PosSettingsFile>("load_pos_settings");
+        const settingsFile = await loadPosSettings();
         const configuredCutover =
           settingsFile.settings.business_day_cutover_time || fallbackCutoverTime;
-        const currentBusinessDate = await invoke<{ business_date: string }>(
-          "get_current_business_date",
-          {
-            request: {
-              business_day_cutover_time: configuredCutover,
-            },
-          },
-        );
+        const currentBusinessDate = await loadCurrentBusinessDate({
+          business_day_cutover_time: configuredCutover,
+        });
 
         if (isMounted) {
           setCutoverTime(configuredCutover);
@@ -90,15 +90,10 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
       setNotice(null);
 
       try {
-        const loadedPreview = await invoke<DayClosePreview>(
-          "get_day_close_preview",
-          {
-            request: {
-              business_date: businessDate,
-              business_day_cutover_time: cutoverTime,
-            },
-          },
-        );
+        const loadedPreview = await loadDayClosePreview({
+          business_date: businessDate,
+          business_day_cutover_time: cutoverTime,
+        });
 
         if (isMounted) {
           setPreview(loadedPreview);
@@ -137,25 +132,18 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
     setNotice(null);
 
     try {
-      const saved = await invoke<SavedDayClose>("save_day_close", {
-        request: {
-          business_date: businessDate,
-          business_day_cutover_time: cutoverTime,
-          counted_cash: countedCash,
-        },
+      const saved = await saveDayClose({
+        business_date: businessDate,
+        business_day_cutover_time: cutoverTime,
+        counted_cash: countedCash,
       });
 
       setNotice(`Kassenabschluss ${saved.business_date} wurde gespeichert.`);
       // Future: trigger Z-Bon / Tagesabschluss receipt printing here once printer integration is wired.
-      const refreshedPreview = await invoke<DayClosePreview>(
-        "get_day_close_preview",
-        {
-          request: {
-            business_date: businessDate,
-            business_day_cutover_time: cutoverTime,
-          },
-        },
-      );
+      const refreshedPreview = await loadDayClosePreview({
+        business_date: businessDate,
+        business_day_cutover_time: cutoverTime,
+      });
       setPreview(refreshedPreview);
     } catch (error) {
       console.error("Could not save day close.", error);
@@ -385,3 +373,4 @@ function SummaryRow({ label, value, strong = false }: SummaryRowProps) {
     </div>
   );
 }
+

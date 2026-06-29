@@ -1,10 +1,11 @@
 {
-    "name":  "local-realtime-manager",
+    "name":  "local-master",
     "private":  true,
     "version":  "0.1.0",
     "type":  "module",
     "scripts":  {
                     "dev":  "tsx watch src/index.ts",
+                    "dev:master":  "npm run dev",
                     "dev:realtime":  "npm run dev",
                     "build":  "tsc",
                     "start":  "node dist/index.js"

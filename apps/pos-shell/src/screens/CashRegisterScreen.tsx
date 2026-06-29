@@ -1,4 +1,4 @@
-import {
+﻿import {
   ArrowLeftIcon,
   BoxesIcon,
   DoorOpenIcon,
@@ -8,17 +8,20 @@ import {
   ShoppingBagIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 
 import type { PosScreen } from "../App";
+import {
+  completeMockPayment,
+  createOrderSnapshot,
+  loadOpenTableOrderBasket,
+  loadProductVariantGroups,
+  loadProducts as loadCatalogProducts,
+} from "../lib/local-master-client";
 import { formatChf } from "../lib/money";
 import type {
   BasketLine,
   BasketLineVariant,
-  CompletedMockPayment,
-  CreatedOrderSnapshot,
   MockPaymentRequest,
-  OpenTableOrderBasket,
   PosProduct,
   ProductCard,
   ProductVariantGroup,
@@ -104,14 +107,13 @@ export function CashRegisterScreen({
 
     async function loadProducts() {
       try {
-        await invoke("initialize_pos_database");
-        const databaseProducts = await invoke<PosProduct[]>("list_products");
+        const databaseProducts = await loadCatalogProducts();
 
         if (isMounted) {
           setProducts(databaseProducts);
         }
       } catch (error) {
-        console.warn("Could not load products from SQLite.", error);
+        console.warn("Could not load products from Local Master.", error);
       }
     }
 
@@ -136,12 +138,7 @@ export function CashRegisterScreen({
       setOrderNotice(null);
 
       try {
-        const openBasket = await invoke<OpenTableOrderBasket | null>(
-          "get_open_table_order_basket",
-          {
-            tableId: tableContext.table_id,
-          },
-        );
+        const openBasket = await loadOpenTableOrderBasket(tableContext.table_id);
 
         if (isMounted) {
           setBasketLines(openBasket?.lines ?? []);
@@ -207,12 +204,7 @@ export function CashRegisterScreen({
 
   async function handleProductPress(product: ProductCard) {
     try {
-      const groups = await invoke<ProductVariantGroup[]>(
-        "list_product_variant_groups",
-        {
-          productId: product.id,
-        },
-      );
+      const groups = await loadProductVariantGroups(product.id);
 
       if (groups.length === 0) {
         addProductToBasket(product, []);
@@ -381,11 +373,9 @@ export function CashRegisterScreen({
     setOrderNotice(null);
 
     try {
-      const order = await invoke<CreatedOrderSnapshot>("create_order_snapshot", {
-        request: {
-          lines: basketLines,
-          table_context: tableContext,
-        },
+      const order = await createOrderSnapshot({
+        lines: basketLines,
+        table_context: tableContext,
       });
 
       setBasketLines([]);
@@ -426,16 +416,11 @@ export function CashRegisterScreen({
     setOrderNotice(null);
 
     try {
-      const payment = await invoke<CompletedMockPayment>(
-        "complete_mock_payment",
-        {
-            request: {
-              lines: basketLines,
-              table_context: tableContext,
-              ...paymentRequest,
-            },
-          },
-        );
+      const payment = await completeMockPayment({
+        lines: basketLines,
+        table_context: tableContext,
+        ...paymentRequest,
+      });
 
       setBasketLines([]);
       setIsPaymentScreenOpen(false);
@@ -501,13 +486,13 @@ export function CashRegisterScreen({
             <aside className="flex min-w-0 flex-col justify-center border-l border-slate-200 bg-slate-50 px-5">
               <p className="truncate text-sm font-black uppercase text-indigo-800">
                 {tableContext
-                  ? `Tisch ${tableContext.table_name} · ${tableContext.area_name}`
+                  ? `Tisch ${tableContext.table_name} Â· ${tableContext.area_name}`
                   : "Tischbetrieb"}
               </p>
               <p className="truncate text-[0.7rem] font-bold uppercase text-slate-400">
                 {basketLines.length === 0
                   ? tableContext
-                    ? `${tableContext.floor_name} · ${tableContext.seats} Sitzplatze`
+                    ? `${tableContext.floor_name} Â· ${tableContext.seats} Sitzplatze`
                     : "Keine Artikel gewahlt"
                   : `${basketLines.length} Positionen`}
               </p>
@@ -674,3 +659,6 @@ export function CashRegisterScreen({
     </main>
   );
 }
+
+
+
