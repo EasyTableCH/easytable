@@ -26,7 +26,6 @@ import type {
   TableContext,
 } from "../lib/pos-types";
 import { BasketPanel } from "./cash-register/BasketPanel";
-import { fallbackProducts, productVisuals } from "./cash-register/catalogData";
 import { PaymentScreen } from "./cash-register/PaymentScreen";
 import { VariantSelectionDrawer } from "./cash-register/VariantSelectionDrawer";
 import {
@@ -54,13 +53,36 @@ const navItems = [
 const allCategoryLabel = "Alle";
 type CatalogViewMode = "grid" | "list";
 
+const productVisuals = [
+  {
+    tone: "from-slate-50 to-slate-100",
+    accent: "text-slate-300",
+  },
+  {
+    tone: "from-zinc-50 to-slate-100",
+    accent: "text-slate-300",
+  },
+  {
+    tone: "from-cyan-50 via-white to-indigo-100",
+    accent: "text-cyan-700",
+  },
+  {
+    tone: "from-stone-50 via-white to-amber-100",
+    accent: "text-stone-600",
+  },
+  {
+    tone: "from-neutral-50 via-white to-rose-100",
+    accent: "text-rose-400",
+  },
+] as const;
+
 export function CashRegisterScreen({
   tableContext,
   onNavigate,
   onOrderCreated,
 }: CashRegisterScreenProps) {
   const showTopRegion = true;
-  const [products, setProducts] = useState<PosProduct[]>(fallbackProducts);
+  const [products, setProducts] = useState<PosProduct[]>([]);
   const [selectedCategory, setSelectedCategory] = useState(allCategoryLabel);
   const [catalogViewMode, setCatalogViewMode] =
     useState<CatalogViewMode>("grid");
@@ -85,14 +107,11 @@ export function CashRegisterScreen({
         await invoke("initialize_pos_database");
         const databaseProducts = await invoke<PosProduct[]>("list_products");
 
-        if (isMounted && databaseProducts.length > 0) {
+        if (isMounted) {
           setProducts(databaseProducts);
         }
       } catch (error) {
-        console.warn(
-          "Using fallback products because SQLite is unavailable.",
-          error,
-        );
+        console.warn("Could not load products from SQLite.", error);
       }
     }
 
@@ -595,6 +614,14 @@ export function CashRegisterScreen({
               ))}
             </div>
           )}
+
+          {filteredProductCards.length === 0 ? (
+            <div className="flex min-h-[45svh] items-center justify-center rounded-md border border-dashed border-slate-300 bg-white/60 px-6 text-center">
+              <p className="max-w-sm text-sm font-black uppercase text-slate-400">
+                Keine Produkte im Katalog
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <BasketPanel

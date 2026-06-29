@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pos-shell",
+  "productName": "easyTable POS",
   "version": "0.1.0",
   "identifier": "com.easytable.pos-shell",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "pos-shell",
+        "title": "easyTable POS",
         "width": 800,
         "height": 600
       }

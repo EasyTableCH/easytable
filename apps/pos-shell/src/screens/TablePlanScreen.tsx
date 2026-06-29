@@ -21,44 +21,6 @@ type TablePlanScreenProps = {
   onSelectTable: (context: TableContext) => void;
 };
 
-const fallbackLayout: TableLayout = {
-  tenant: { id: "tenant_basilica", name: "Basilica" },
-  location: {
-    id: "loc_basilica_main",
-    tenant_id: "tenant_basilica",
-    name: "Basilica",
-  },
-  floors: [
-    {
-      id: "floor_basilica_eg",
-      location_id: "loc_basilica_main",
-      name: "EG",
-      sort_order: 10,
-      areas: [
-        {
-          id: "area_basilica_fumoir",
-          floor_id: "floor_basilica_eg",
-          name: "Fumoir",
-          sort_order: 20,
-          tables: [
-            {
-              id: "table_basilica_fumoir_2",
-              area_id: "area_basilica_fumoir",
-              name: "2",
-              seats: 4,
-              sort_order: 10,
-              open_order_id: null,
-              open_order_number: null,
-              open_total: 0,
-              open_order_count: 0,
-            },
-          ],
-        },
-      ],
-    },
-  ],
-};
-
 const navItems = [
   { label: "Kasse", icon: ReceiptTextIcon, screen: "tables", active: true },
   { label: "Mehr", icon: EllipsisIcon, screen: "more", active: false },
@@ -74,18 +36,19 @@ export function TablePlanScreen({
   onNavigate,
   onSelectTable,
 }: TablePlanScreenProps) {
-  const [layout, setLayout] = useState<TableLayout>(fallbackLayout);
-  const [activeFloorId, setActiveFloorId] = useState<string>(
-    fallbackLayout.floors[0]?.id ?? "",
-  );
-  const [activeAreaId, setActiveAreaId] = useState<string>(
-    fallbackLayout.floors[0]?.areas[0]?.id ?? "",
-  );
+  const [layout, setLayout] = useState<TableLayout | null>(null);
+  const [activeFloorId, setActiveFloorId] = useState("");
+  const [activeAreaId, setActiveAreaId] = useState("");
+  const [isLoadingLayout, setIsLoadingLayout] = useState(true);
+  const [layoutNotice, setLayoutNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadLayout() {
+      setIsLoadingLayout(true);
+      setLayoutNotice(null);
+
       try {
         await invoke("initialize_pos_database");
         const tableLayout = await invoke<TableLayout>("list_table_layout");
@@ -98,10 +61,18 @@ export function TablePlanScreen({
           setActiveAreaId(firstArea?.id ?? "");
         }
       } catch (error) {
-        console.warn(
-          "Using fallback table layout because SQLite is unavailable.",
-          error,
-        );
+        console.warn("Could not load table layout from SQLite.", error);
+
+        if (isMounted) {
+          setLayout(null);
+          setActiveFloorId("");
+          setActiveAreaId("");
+          setLayoutNotice("Tischplan konnte nicht geladen werden.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingLayout(false);
+        }
       }
     }
 
@@ -113,8 +84,8 @@ export function TablePlanScreen({
   }, []);
 
   const activeFloor = useMemo<TableLayoutFloor | undefined>(
-    () => layout.floors.find((floor) => floor.id === activeFloorId),
-    [activeFloorId, layout.floors],
+    () => layout?.floors.find((floor) => floor.id === activeFloorId),
+    [activeFloorId, layout],
   );
   const activeArea = useMemo<TableLayoutArea | undefined>(
     () => activeFloor?.areas.find((area) => area.id === activeAreaId),
@@ -128,6 +99,10 @@ export function TablePlanScreen({
 
   function handleTableSelect(table: TableLayoutTable) {
     if (!activeFloor || !activeArea) {
+      return;
+    }
+
+    if (!layout) {
       return;
     }
 
@@ -147,7 +122,7 @@ export function TablePlanScreen({
   return (
     <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f7f8fc] text-slate-950">
       <section className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-300 px-5">
-        {layout.floors.map((floor) => (
+        {layout?.floors.map((floor) => (
           <Button
             key={floor.id}
             variant={floor.id === activeFloorId ? "default" : "secondary"}
@@ -183,44 +158,54 @@ export function TablePlanScreen({
       </section>
 
       <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-9 py-9">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-7">
-          {activeArea?.tables.map((table) => {
-            const hasOpenOrder = table.open_order_count > 0;
+        {activeArea?.tables.length ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-7">
+            {activeArea.tables.map((table) => {
+              const hasOpenOrder = table.open_order_count > 0;
 
-            return (
-              <Button
-                key={table.id}
-                variant="ghost"
-                className="h-auto rounded-md p-0 text-slate-950 transition active:scale-[0.985]"
-                onClick={() => handleTableSelect(table)}
-              >
-                <Card
-                  className={cn(
-                    "aspect-[1.05] min-h-36 w-full rounded-md bg-white py-0 shadow-xl shadow-slate-200/70 transition group-hover/button:bg-white",
-                    hasOpenOrder ? "ring-emerald-300" : "ring-slate-100",
-                  )}
+              return (
+                <Button
+                  key={table.id}
+                  variant="ghost"
+                  className="h-auto rounded-md p-0 text-slate-950 transition active:scale-[0.985]"
+                  onClick={() => handleTableSelect(table)}
                 >
-                  <CardContent className="flex h-full flex-col items-center justify-center p-4 text-center">
-                    <span className="text-4xl font-black text-slate-950">
-                      {table.name}
-                    </span>
-                    <span className="mt-3 text-sm font-black text-slate-500">
-                      {table.seats} Sitzplatze
-                    </span>
-                    {hasOpenOrder ? (
-                      <Badge
-                        variant="secondary"
-                        className="mt-4 bg-emerald-50 text-xs font-black uppercase text-emerald-700"
-                      >
-                        {formatChf(table.open_total)}
-                      </Badge>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              </Button>
-            );
-          })}
-        </div>
+                  <Card
+                    className={cn(
+                      "aspect-[1.05] min-h-36 w-full rounded-md bg-white py-0 shadow-xl shadow-slate-200/70 transition group-hover/button:bg-white",
+                      hasOpenOrder ? "ring-emerald-300" : "ring-slate-100",
+                    )}
+                  >
+                    <CardContent className="flex h-full flex-col items-center justify-center p-4 text-center">
+                      <span className="text-4xl font-black text-slate-950">
+                        {table.name}
+                      </span>
+                      <span className="mt-3 text-sm font-black text-slate-500">
+                        {table.seats} Sitzplatze
+                      </span>
+                      {hasOpenOrder ? (
+                        <Badge
+                          variant="secondary"
+                          className="mt-4 bg-emerald-50 text-xs font-black uppercase text-emerald-700"
+                        >
+                          {formatChf(table.open_total)}
+                        </Badge>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                </Button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-[50svh] items-center justify-center rounded-md border border-dashed border-slate-300 bg-white/60 px-6 text-center">
+            <p className="max-w-sm text-sm font-black uppercase text-slate-400">
+              {isLoadingLayout
+                ? "Tischplan wird geladen"
+                : layoutNotice ?? "Keine Tische im Tischplan"}
+            </p>
+          </div>
+        )}
       </section>
 
       <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">

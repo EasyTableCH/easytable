@@ -1,14 +1,20 @@
 {
-  "name": "easytable",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "dev:pos": "npm run dev -w apps/pos-shell",
-    "build:pos": "npm run build -w apps/pos-shell"
-  }
+    "name":  "easytable",
+    "private":  true,
+    "version":  "0.1.0",
+    "type":  "module",
+    "workspaces":  [
+                       "apps/*",
+                       "packages/*",
+                       "services/localRealtimeManager"
+                   ],
+    "scripts":  {
+                    "dev":  "npm run dev:realtime",
+                    "dev:pos":  "npm run dev -w apps/pos-shell",
+                    "dev:staff":  "npm run dev -w apps/staff",
+                    "dev:realtime":  "npm run dev -w services/localRealtimeManager",
+                    "build:pos":  "npm run build -w apps/pos-shell",
+                    "build:staff":  "npm run build -w apps/staff",
+                    "build:realtime":  "npm run build -w services/localRealtimeManager"
+                }
 }
