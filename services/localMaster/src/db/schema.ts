@@ -1,10 +1,49 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const localState = sqliteTable("local_state", {
   key: text("key").primaryKey(),
   valueJson: text("value_json").notNull(),
   updatedAt: integer("updated_at").notNull()
 });
+
+export const tenants = sqliteTable(
+  "tenants",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    website: text("website"),
+    status: text("status").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_tenants_slug").on(table.slug),
+    index("idx_tenants_status").on(table.status, table.name)
+  ]
+);
+
+export const locations = sqliteTable(
+  "locations",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    address: text("address"),
+    localMasterInstanceId: text("local_master_instance_id"),
+    status: text("status").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_locations_tenant_slug").on(table.tenantId, table.slug),
+    index("idx_locations_tenant").on(table.tenantId, table.status, table.name),
+    index("idx_locations_local_master").on(table.localMasterInstanceId)
+  ]
+);
 
 export const orders = sqliteTable(
   "orders",

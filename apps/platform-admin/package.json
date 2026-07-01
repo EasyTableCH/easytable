@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@easytable/ui": "0.1.0",
+    "lucide-react": "^0.468.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",

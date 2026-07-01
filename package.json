@@ -1,22 +1,25 @@
 {
-    "name":  "easytable",
-    "private":  true,
-    "version":  "0.1.0",
-    "type":  "module",
-    "workspaces":  [
-                       "apps/*",
-                       "packages/*",
-                       "services/localMaster"
-                   ],
-    "scripts":  {
-                    "dev":  "npm run dev:master",
-                    "dev:pos":  "npm run dev -w apps/pos-shell",
-                    "dev:staff":  "npm run dev -w apps/staff",
-                    "dev:master":  "npm run dev -w services/localMaster",
-                    "dev:realtime":  "npm run dev:master",
-                    "build:pos":  "npm run build -w apps/pos-shell",
-                    "build:staff":  "npm run build -w apps/staff",
-                    "build:master":  "npm run build -w services/localMaster",
-                    "build:realtime":  "npm run build:master"
-                }
+  "name": "easytable",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/localMaster",
+    "services/relaySyncApi"
+  ],
+  "scripts": {
+    "dev": "npm run dev:master",
+    "dev:pos": "npm run dev -w apps/pos-shell",
+    "dev:staff": "npm run dev -w apps/staff",
+    "dev:master": "npm run dev -w services/localMaster",
+    "dev:realtime": "npm run dev:master",
+    "dev:relay-sync": "npm run dev -w services/relaySyncApi",
+    "build:pos": "npm run build -w apps/pos-shell",
+    "build:staff": "npm run build -w apps/staff",
+    "build:master": "npm run build -w services/localMaster",
+    "build:realtime": "npm run build:master",
+    "build:relay-sync": "npm run build -w services/relaySyncApi"
+  }
 }
