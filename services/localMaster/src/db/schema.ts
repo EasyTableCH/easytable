@@ -108,6 +108,21 @@ export const catalogCategories = sqliteTable("catalog_categories", {
   updatedAt: integer("updated_at").notNull()
 });
 
+export const catalogOutputStations = sqliteTable(
+  "catalog_output_stations",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    isActive: integer("is_active").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [index("idx_catalog_output_stations_tenant").on(table.tenantId, table.isActive, table.sortOrder)]
+);
+
 export const catalogTaxes = sqliteTable(
   "catalog_taxes",
   {
@@ -134,13 +149,14 @@ export const catalogProducts = sqliteTable(
     taxCodeName: text("tax_code_name").notNull(),
     taxRateBps: integer("tax_rate_bps").notNull(),
     isAvailable: integer("is_available").notNull(),
-    station: text("station").notNull(),
+    station: text("station").notNull().default(""),
+    stationId: text("station_id").references(() => catalogOutputStations.id, { onDelete: "set null" }),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull()
   },
   (table) => [
     index("idx_catalog_products_category").on(table.categoryId, table.name),
-    index("idx_catalog_products_station").on(table.station, table.productType),
+    index("idx_catalog_products_station").on(table.stationId, table.productType),
     index("idx_catalog_products_tax").on(table.taxId, table.name)
   ]
 );

@@ -9,12 +9,27 @@
   tax_rate_bps: number;
   is_available: boolean;
   isAvailable: boolean;
+  station_id: string | null;
+  station_name: string | null;
   station: string;
 };
 
 export type CatalogProduct = PosProduct & {
   category_id: string;
   tax_id: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type CatalogOutputStationKind = "KDS" | "PRINTER" | "KDS_AND_PRINTER" | "NONE";
+
+export type CatalogOutputStation = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  kind: CatalogOutputStationKind;
+  is_active: boolean;
+  sort_order: number;
   created_at: number;
   updated_at: number;
 };
@@ -45,7 +60,7 @@ export type CatalogProductCreateRequest = {
   name: string;
   price: number;
   is_available: boolean;
-  station: string;
+  station_id?: string | null;
 };
 
 export type CatalogProductUpdateRequest = Partial<CatalogProductCreateRequest>;

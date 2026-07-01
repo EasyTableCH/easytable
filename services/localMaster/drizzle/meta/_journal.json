@@ -8,6 +8,13 @@
       "when": 1782905815759,
       "tag": "0000_careful_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782906888985,
+      "tag": "0001_wise_purifiers",
+      "breakpoints": true
     }
   ]
 }

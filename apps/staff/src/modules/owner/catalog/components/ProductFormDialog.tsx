@@ -15,6 +15,7 @@ import { Switch } from "@easytable/ui/components/switch";
 
 import type {
   CatalogCategory,
+  CatalogOutputStation,
   CatalogProduct,
   CatalogProductInput,
   CatalogProductType,
@@ -24,6 +25,7 @@ import { formatCentsForInput, parseMoneyToCents } from "../utils";
 
 type ProductFormDialogProps = {
   categories: CatalogCategory[];
+  outputStations: CatalogOutputStation[];
   taxes: CatalogTax[];
   product?: CatalogProduct;
   mode: "create" | "edit";
@@ -36,11 +38,11 @@ type ProductFormState = {
   product_type: CatalogProductType;
   name: string;
   price: string;
-  station: string;
+  station_id: string;
   is_available: boolean;
 };
 
-export function ProductFormDialog({ categories, taxes, product, mode, onSubmit }: ProductFormDialogProps) {
+export function ProductFormDialog({ categories, outputStations, taxes, product, mode, onSubmit }: ProductFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ProductFormState>(() => createInitialState(categories, taxes, product));
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function ProductFormDialog({ categories, taxes, product, mode, onSubmit }
         product_type: form.product_type,
         name: form.name.trim(),
         price: parseMoneyToCents(form.price),
-        station: form.station.trim(),
+        station_id: form.station_id || null,
         is_available: form.is_available,
       });
       setOpen(false);
@@ -144,7 +146,18 @@ export function ProductFormDialog({ categories, taxes, product, mode, onSubmit }
             </label>
             <label className="grid gap-1.5">
               <span className="text-sm font-medium">Station</span>
-              <Input onChange={(event) => setForm({ ...form, station: event.target.value })} required value={form.station} />
+              <select
+                className="h-9 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                onChange={(event) => setForm({ ...form, station_id: event.target.value })}
+                value={form.station_id}
+              >
+                <option value="">Keine Station</option>
+                {outputStations.map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -182,7 +195,7 @@ function createInitialState(categories: CatalogCategory[], taxes: CatalogTax[], 
     product_type: product?.product_type ?? "BASIC",
     name: product?.name ?? "",
     price: formatCentsForInput(product?.price ?? 0),
-    station: product?.station ?? "BAR",
+    station_id: product?.station_id ?? "",
     is_available: product?.is_available ?? true,
   };
 }

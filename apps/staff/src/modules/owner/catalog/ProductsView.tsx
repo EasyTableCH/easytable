@@ -12,14 +12,15 @@ import {
   TableRow,
 } from "@easytable/ui/components/table";
 
-import type { CatalogCategory, CatalogProduct, CatalogProductInput, CatalogTax } from "../../../lib/local-master";
+import type { CatalogCategory, CatalogOutputStation, CatalogProduct, CatalogProductInput, CatalogTax } from "../../../lib/local-master";
 import { CatalogFilters } from "./components/CatalogFilters";
 import { DuplicateIconButton, ProductFormDialog } from "./components/ProductFormDialog";
-import { formatMoney, uniqueSorted } from "./utils";
+import { formatMoney } from "./utils";
 
 type ProductsViewProps = {
   products: CatalogProduct[];
   categories: CatalogCategory[];
+  outputStations: CatalogOutputStation[];
   taxes: CatalogTax[];
   isLoading: boolean;
   onReload: () => void;
@@ -32,6 +33,7 @@ type ProductsViewProps = {
 export function ProductsView({
   products,
   categories,
+  outputStations,
   taxes,
   isLoading,
   onReload,
@@ -46,21 +48,18 @@ export function ProductsView({
   const [type, setType] = useState("all");
   const [availability, setAvailability] = useState("all");
 
-  const stationOptions = useMemo(
-    () => uniqueSorted(products.map((product) => product.station).filter(Boolean)),
-    [products],
-  );
-
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return products.filter((product) => {
       const matchesSearch =
         query.length === 0 ||
-        [product.name, product.category, product.station, product.tax_code_name, product.product_type]
+        [product.name, product.category, product.station_name ?? "", product.tax_code_name, product.product_type]
           .some((value) => value.toLowerCase().includes(query));
       const matchesCategory = categoryId === "all" || product.category_id === categoryId;
-      const matchesStation = station === "all" || product.station === station;
+      const matchesStation =
+        station === "all" ||
+        (station === "none" ? product.station_id === null : product.station_id === station);
       const matchesType = type === "all" || product.product_type === type;
       const matchesAvailability =
         availability === "all" ||
@@ -71,7 +70,7 @@ export function ProductsView({
   }, [availability, categoryId, products, search, station, type]);
 
   async function handleDelete(product: CatalogProduct) {
-    if (!window.confirm(`Produkt "${product.name}" loeschen?`)) {
+    if (!window.confirm(`Produkt "${product.name}" löschen?`)) {
       return;
     }
 
@@ -90,7 +89,7 @@ export function ProductsView({
             <RefreshCw className={isLoading ? "size-4 animate-spin" : "size-4"} />
             Laden
           </Button>
-          <ProductFormDialog categories={categories} mode="create" onSubmit={onCreate} taxes={taxes} />
+          <ProductFormDialog categories={categories} mode="create" onSubmit={onCreate} outputStations={outputStations} taxes={taxes} />
         </div>
       </div>
 
@@ -113,7 +112,8 @@ export function ProductsView({
             onChange: setStation,
             options: [
               { label: "Alle Stationen", value: "all" },
-              ...stationOptions.map((option) => ({ label: option, value: option })),
+              { label: "Keine Station", value: "none" },
+              ...outputStations.map((option) => ({ label: option.name, value: option.id })),
             ],
           },
           {
@@ -129,13 +129,13 @@ export function ProductsView({
           },
           {
             id: "availability",
-            label: "Verfuegbarkeit",
+            label: "Verfügbarkeit",
             value: availability,
             onChange: setAvailability,
             options: [
               { label: "Alle Status", value: "all" },
-              { label: "Verfuegbar", value: "available" },
-              { label: "Nicht verfuegbar", value: "unavailable" },
+              { label: "Verfügbar", value: "available" },
+              { label: "Nicht verfügbar", value: "unavailable" },
             ],
           },
         ]}
@@ -169,10 +169,10 @@ export function ProductsView({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(product.price)}</TableCell>
                   <TableCell>{product.tax_code_name}</TableCell>
-                  <TableCell>{product.station}</TableCell>
+                  <TableCell>{product.station_name ?? "Keine Station"}</TableCell>
                   <TableCell>
                     <Badge variant={product.is_available ? "secondary" : "destructive"}>
-                      {product.is_available ? "Verfuegbar" : "Aus"}
+                      {product.is_available ? "Verfügbar" : "Aus"}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -180,6 +180,7 @@ export function ProductsView({
                       <ProductFormDialog
                         categories={categories}
                         mode="edit"
+                        outputStations={outputStations}
                         taxes={taxes}
                         onSubmit={(input) => onUpdate(product.id, input)}
                         product={product}
@@ -187,7 +188,7 @@ export function ProductsView({
                       <DuplicateIconButton onClick={() => void onDuplicate(product.id)} />
                       <Button onClick={() => void handleDelete(product)} size="icon-sm" title="Loeschen" type="button" variant="ghost">
                         <Trash2 className="size-4" />
-                        <span className="sr-only">Loeschen</span>
+                        <span className="sr-only">Löschen</span>
                       </Button>
                     </div>
                   </TableCell>

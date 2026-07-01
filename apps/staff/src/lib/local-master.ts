@@ -13,9 +13,22 @@ export type CatalogProduct = {
   tax_rate_bps: number;
   is_available: boolean;
   isAvailable?: boolean;
+  station_id: string | null;
+  station_name: string | null;
   station: string;
   created_at?: number;
   updated_at?: number;
+};
+
+export type CatalogOutputStation = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  kind: "KDS" | "PRINTER" | "KDS_AND_PRINTER" | "NONE";
+  is_active: boolean;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
 };
 
 export type CatalogCategory = {
@@ -44,7 +57,7 @@ export type CatalogProductInput = {
   name: string;
   price: number;
   is_available: boolean;
-  station: string;
+  station_id?: string | null;
 };
 
 export type CatalogCategoryInput = {
@@ -79,6 +92,10 @@ export function loadCatalogCategories() {
 
 export function loadCatalogTaxes() {
   return readJson<CatalogTax[]>("/api/catalog/taxes", []);
+}
+
+export function loadCatalogOutputStations() {
+  return readJson<CatalogOutputStation[]>("/api/catalog/output-stations", []);
 }
 
 export function createCatalogProduct(input: CatalogProductInput) {

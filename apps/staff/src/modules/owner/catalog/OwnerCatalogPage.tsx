@@ -16,11 +16,13 @@ import {
   getLocalMasterUrl,
   loadCatalog,
   loadCatalogCategories,
+  loadCatalogOutputStations,
   loadCatalogTaxes,
   updateCatalogCategory,
   updateCatalogProduct,
   updateCatalogTax,
   type CatalogCategory,
+  type CatalogOutputStation,
   type CatalogProduct,
   type CatalogTax,
 } from "../../../lib/local-master";
@@ -36,6 +38,7 @@ type OwnerCatalogPageProps = {
 export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [outputStations, setOutputStations] = useState<CatalogOutputStation[]>([]);
   const [taxes, setTaxes] = useState<CatalogTax[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,14 +48,16 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
     setError(null);
 
     try {
-      const [nextProducts, nextCategories, nextTaxes] = await Promise.all([
+      const [nextProducts, nextCategories, nextTaxes, nextOutputStations] = await Promise.all([
         loadCatalog(),
         loadCatalogCategories(),
         loadCatalogTaxes(),
+        loadCatalogOutputStations(),
       ]);
       setProducts(nextProducts);
       setCategories(nextCategories);
       setTaxes(nextTaxes);
+      setOutputStations(nextOutputStations);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Katalog konnte nicht geladen werden.");
     } finally {
@@ -99,6 +104,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
           onDuplicate={(productId) => runAction(async () => void (await duplicateCatalogProduct(productId)))}
           onReload={refreshCatalog}
           onUpdate={(productId, input) => runAction(async () => void (await updateCatalogProduct(productId, input)))}
+          outputStations={outputStations}
           products={products}
           taxes={taxes}
         />

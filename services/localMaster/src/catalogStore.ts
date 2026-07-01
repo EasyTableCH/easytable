@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 
 import { getDrizzleDatabase } from "./db/client.js";
-import { catalogCategories, catalogProducts, catalogTaxes } from "./db/schema.js";
+import { catalogCategories, catalogOutputStations, catalogProducts, catalogTaxes } from "./db/schema.js";
 import type {
   CatalogCategory,
   CatalogCategoryCreateRequest,
   CatalogCategoryUpdateRequest,
+  CatalogOutputStation,
+  CatalogOutputStationKind,
   CatalogProduct,
   CatalogProductCreateRequest,
   CatalogProductUpdateRequest,
@@ -17,17 +19,25 @@ import type {
   PosProduct
 } from "./types.js";
 
+const tenantId = "tenant_basilica";
+
+const defaultOutputStations: CatalogOutputStation[] = [
+  createSeedStation("station_shisha", "Shisha", "KDS_AND_PRINTER", 10),
+  createSeedStation("station_bar", "Bar", "KDS_AND_PRINTER", 20),
+  createSeedStation("station_snack", "Snack", "KDS_AND_PRINTER", 30)
+];
+
 const defaultProducts: PosProduct[] = [
-  createSeedProduct("prod_invoice", "SERVICE", "Rechnung", "Service", 0, "tax_standard_ch", "MwSt 8.1%", 810, "SERVICE"),
-  createSeedProduct("prod_service_personal", "SERVICE", "Service Personal", "Service", 0, "tax_standard_ch", "MwSt 8.1%", 810, "SERVICE"),
-  createSeedProduct("prod_shisha_standard", "BASIC", "Shisha Standard", "Shisha", 3000, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_nava_shisha", "BASIC", "NAVA Shisha", "Shisha", 5900, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_smokezilla_laser_shisha", "BASIC", "SmokeZilla Laser Shisha", "Shisha", 8900, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_shisha_triple_skull", "BASIC", "Shisha Triple Skull", "Shisha", 4500, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_neuer_kopf", "SERVICE", "Neuer Kopf", "Shisha", 1500, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_kohle", "SERVICE", "Kohle", "Shisha", 0, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_mundstucke", "SERVICE", "Mundstucke", "Shisha", 300, "tax_standard_ch", "MwSt 8.1%", 810, "BAR"),
-  createSeedProduct("prod_chinotto", "BASIC", "Chinotto", "Sussgetranke", 700, "tax_standard_ch", "MwSt 8.1%", 810, "BAR")
+  createSeedProduct("prod_invoice", "SERVICE", "Rechnung", "Service", 0, "tax_standard_ch", "MwSt 8.1%", 810, null),
+  createSeedProduct("prod_service_personal", "SERVICE", "Service Personal", "Service", 0, "tax_standard_ch", "MwSt 8.1%", 810, null),
+  createSeedProduct("prod_shisha_standard", "BASIC", "Shisha Standard", "Shisha", 3000, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_nava_shisha", "BASIC", "NAVA Shisha", "Shisha", 5900, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_smokezilla_laser_shisha", "BASIC", "SmokeZilla Laser Shisha", "Shisha", 8900, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_shisha_triple_skull", "BASIC", "Shisha Triple Skull", "Shisha", 4500, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_neuer_kopf", "SERVICE", "Neuer Kopf", "Shisha", 1500, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_kohle", "SERVICE", "Kohle", "Shisha", 0, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_mundstucke", "SERVICE", "Mundstucke", "Shisha", 300, "tax_standard_ch", "MwSt 8.1%", 810, "station_shisha"),
+  createSeedProduct("prod_chinotto", "BASIC", "Chinotto", "Sussgetranke", 700, "tax_standard_ch", "MwSt 8.1%", 810, "station_bar")
 ];
 
 type CatalogProductRow = {
@@ -42,7 +52,8 @@ type CatalogProductRow = {
   taxCodeName: string;
   taxRateBps: number;
   isAvailable: number;
-  station: string;
+  stationId: string | null;
+  stationName: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -52,6 +63,17 @@ type CatalogCategoryRow = {
   name: string;
   sortOrder: number;
   productCount: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type CatalogOutputStationRow = {
+  id: string;
+  tenantId: string;
+  name: string;
+  kind: string;
+  isActive: number;
+  sortOrder: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -82,6 +104,7 @@ export function listProducts(): CatalogProduct[] {
     .select(productSelectFields)
     .from(catalogProducts)
     .innerJoin(catalogCategories, eq(catalogCategories.id, catalogProducts.categoryId))
+    .leftJoin(catalogOutputStations, eq(catalogOutputStations.id, catalogProducts.stationId))
     .orderBy(asc(catalogCategories.sortOrder), asc(catalogCategories.name), asc(catalogProducts.name))
     .all()
     .map(toCatalogProduct);
@@ -94,6 +117,7 @@ export function getProductById(productId: string): CatalogProduct | null {
     .select(productSelectFields)
     .from(catalogProducts)
     .innerJoin(catalogCategories, eq(catalogCategories.id, catalogProducts.categoryId))
+    .leftJoin(catalogOutputStations, eq(catalogOutputStations.id, catalogProducts.stationId))
     .where(eq(catalogProducts.id, productId))
     .get();
 
@@ -126,12 +150,25 @@ export function listCatalogTaxes(): CatalogTax[] {
     .map(toCatalogTax);
 }
 
+export function listCatalogOutputStations(): CatalogOutputStation[] {
+  ensureCatalogSeeded();
+
+  return getDrizzleDatabase()
+    .select()
+    .from(catalogOutputStations)
+    .where(eq(catalogOutputStations.isActive, 1))
+    .orderBy(asc(catalogOutputStations.sortOrder), asc(catalogOutputStations.name))
+    .all()
+    .map(toCatalogOutputStation);
+}
+
 export function createCatalogProduct(request: CatalogProductCreateRequest): CatalogProduct {
   ensureCatalogSeeded();
 
   const now = Date.now();
   const input = normalizeProductInput(request);
   const tax = requireTax(input.tax_id);
+  const station = input.station_id ? requireOutputStation(input.station_id) : null;
   const id = "prod_" + randomUUID();
 
   getDrizzleDatabase()
@@ -147,7 +184,7 @@ export function createCatalogProduct(request: CatalogProductCreateRequest): Cata
       taxCodeName: tax.name,
       taxRateBps: tax.rate_bps,
       isAvailable: input.is_available ? 1 : 0,
-      station: input.station,
+      stationId: station?.id ?? null,
       createdAt: now,
       updatedAt: now
     })
@@ -167,9 +204,10 @@ export function updateCatalogProduct(productId: string, request: CatalogProductU
     name: request.name ?? current.name,
     price: request.price ?? current.price,
     is_available: request.is_available ?? current.is_available,
-    station: request.station ?? current.station
+    station_id: request.station_id === undefined ? current.station_id : request.station_id
   });
   const tax = requireTax(input.tax_id);
+  const station = input.station_id ? requireOutputStation(input.station_id) : null;
 
   getDrizzleDatabase()
     .update(catalogProducts)
@@ -183,7 +221,7 @@ export function updateCatalogProduct(productId: string, request: CatalogProductU
       taxCodeName: tax.name,
       taxRateBps: tax.rate_bps,
       isAvailable: input.is_available ? 1 : 0,
-      station: input.station,
+      stationId: station?.id ?? null,
       updatedAt: Date.now()
     })
     .where(eq(catalogProducts.id, productId))
@@ -202,7 +240,7 @@ export function duplicateCatalogProduct(productId: string): CatalogProduct {
     name: uniqueProductName(current.name + " Kopie"),
     price: current.price,
     is_available: current.is_available,
-    station: current.station
+    station_id: current.station_id
   });
 }
 
@@ -346,7 +384,8 @@ const productSelectFields = {
   taxCodeName: catalogProducts.taxCodeName,
   taxRateBps: catalogProducts.taxRateBps,
   isAvailable: catalogProducts.isAvailable,
-  station: catalogProducts.station,
+  stationId: catalogProducts.stationId,
+  stationName: catalogOutputStations.name,
   createdAt: catalogProducts.createdAt,
   updatedAt: catalogProducts.updatedAt
 };
@@ -371,6 +410,8 @@ const taxSelectFields = {
 };
 
 function ensureCatalogSeeded() {
+  ensureOutputStationsSeeded();
+
   const row = getDrizzleDatabase().select({ count: count() }).from(catalogCategories).get();
 
   if ((row?.count ?? 0) === 0) {
@@ -409,13 +450,34 @@ function seedCategoriesAndProducts() {
           taxCodeName: product.tax_code_name,
           taxRateBps: product.tax_rate_bps,
           isAvailable: product.is_available ? 1 : 0,
-          station: product.station,
+          stationId: product.station_id,
           createdAt: now,
           updatedAt: now
         })
         .run();
     }
   });
+}
+
+function ensureOutputStationsSeeded() {
+  const db = getDrizzleDatabase();
+  const now = Date.now();
+
+  for (const station of defaultOutputStations) {
+    db.insert(catalogOutputStations)
+      .values({
+        id: station.id,
+        tenantId: station.tenant_id,
+        name: station.name,
+        kind: station.kind,
+        isActive: station.is_active ? 1 : 0,
+        sortOrder: station.sort_order,
+        createdAt: station.created_at || now,
+        updatedAt: now
+      })
+      .onConflictDoNothing()
+      .run();
+  }
 }
 
 function ensureTaxesSeeded() {
@@ -463,8 +525,13 @@ function backfillProductTaxIds() {
     .run();
 }
 
-function createSeedProduct(id: string, productType: PosProduct["product_type"], name: string, category: string, price: number, taxCodeId: string, taxCodeName: string, taxRateBps: number, station: string): PosProduct {
-  return { id, product_type: productType, name, category, price, tax_code_id: taxCodeId, tax_code_name: taxCodeName, tax_rate_bps: taxRateBps, is_available: true, isAvailable: true, station };
+function createSeedStation(id: string, name: string, kind: CatalogOutputStationKind, sortOrder: number): CatalogOutputStation {
+  return { id, tenant_id: tenantId, name, kind, is_active: true, sort_order: sortOrder, created_at: 0, updated_at: 0 };
+}
+
+function createSeedProduct(id: string, productType: PosProduct["product_type"], name: string, category: string, price: number, taxCodeId: string, taxCodeName: string, taxRateBps: number, stationId: string | null): PosProduct {
+  const stationName = stationId ? defaultOutputStations.find((station) => station.id === stationId)?.name ?? null : null;
+  return { id, product_type: productType, name, category, price, tax_code_id: taxCodeId, tax_code_name: taxCodeName, tax_rate_bps: taxRateBps, is_available: true, isAvailable: true, station_id: stationId, station_name: stationName, station: stationName ?? "" };
 }
 
 function normalizeProductInput(request: CatalogProductCreateRequest): Required<CatalogProductCreateRequest> {
@@ -477,7 +544,7 @@ function normalizeProductInput(request: CatalogProductCreateRequest): Required<C
     throw new CatalogError("Product type must be BASIC or SERVICE.");
   }
 
-  return { category_id: categoryId, tax_id: taxId, product_type: request.product_type, name: normalizeName(request.name, "Product name is required."), price: normalizeInteger(request.price, "Price must be a positive integer or zero."), is_available: request.is_available ?? true, station: normalizeName(request.station, "Station is required.") };
+  return { category_id: categoryId, tax_id: taxId, product_type: request.product_type, name: normalizeName(request.name, "Product name is required."), price: normalizeInteger(request.price, "Price must be a positive integer or zero."), is_available: request.is_available ?? true, station_id: normalizeOptionalStationId(request.station_id) };
 }
 
 function requireProduct(productId: string): CatalogProduct {
@@ -496,6 +563,12 @@ function requireTax(taxId: string): CatalogTax {
   const tax = getTaxById(taxId);
   if (!tax) throw new CatalogError("Tax not found.", 404);
   return tax;
+}
+
+function requireOutputStation(stationId: string): CatalogOutputStation {
+  const station = getOutputStationById(stationId);
+  if (!station) throw new CatalogError("Output station not found.", 404);
+  return station;
 }
 
 function getCategoryById(categoryId: string): CatalogCategory | null {
@@ -520,6 +593,16 @@ function getTaxById(taxId: string): CatalogTax | null {
     .get();
 
   return row ? toCatalogTax(row) : null;
+}
+
+function getOutputStationById(stationId: string): CatalogOutputStation | null {
+  const row = getDrizzleDatabase()
+    .select()
+    .from(catalogOutputStations)
+    .where(eq(catalogOutputStations.id, stationId))
+    .get();
+
+  return row ? toCatalogOutputStation(row) : null;
 }
 
 function ensureUniqueCategoryName(name: string, exceptCategoryId?: string) {
@@ -599,8 +682,13 @@ function normalizeOptionalInteger(value: number | undefined, fallback: number) {
   return value === undefined ? fallback : normalizeInteger(value, "Sort order must be a positive integer or zero.");
 }
 
+function normalizeOptionalStationId(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
 function toCatalogProduct(row: CatalogProductRow): CatalogProduct {
-  return { id: row.id, product_type: toProductType(row.productType), name: row.name, category_id: row.categoryId, category: row.category, tax_id: row.taxId ?? row.taxCodeId, price: row.price, tax_code_id: row.taxCodeId, tax_code_name: row.taxCodeName, tax_rate_bps: row.taxRateBps, is_available: row.isAvailable === 1, isAvailable: row.isAvailable === 1, station: row.station, created_at: row.createdAt, updated_at: row.updatedAt };
+  return { id: row.id, product_type: toProductType(row.productType), name: row.name, category_id: row.categoryId, category: row.category, tax_id: row.taxId ?? row.taxCodeId, price: row.price, tax_code_id: row.taxCodeId, tax_code_name: row.taxCodeName, tax_rate_bps: row.taxRateBps, is_available: row.isAvailable === 1, isAvailable: row.isAvailable === 1, station_id: row.stationId, station_name: row.stationName, station: row.stationName ?? "", created_at: row.createdAt, updated_at: row.updatedAt };
 }
 
 function toCatalogCategory(row: CatalogCategoryRow): CatalogCategory {
@@ -611,9 +699,21 @@ function toCatalogTax(row: CatalogTaxRow): CatalogTax {
   return { id: row.id, name: row.name, rate_bps: row.rateBps, sort_order: row.sortOrder, product_count: row.productCount, created_at: row.createdAt, updated_at: row.updatedAt };
 }
 
+function toCatalogOutputStation(row: CatalogOutputStationRow): CatalogOutputStation {
+  return { id: row.id, tenant_id: row.tenantId, name: row.name, kind: toOutputStationKind(row.kind), is_active: row.isActive === 1, sort_order: row.sortOrder, created_at: row.createdAt, updated_at: row.updatedAt };
+}
+
 function toProductType(value: string): PosProduct["product_type"] {
   if (value !== "BASIC" && value !== "SERVICE") {
     throw new CatalogError("Stored product type is invalid.", 500);
+  }
+
+  return value;
+}
+
+function toOutputStationKind(value: string): CatalogOutputStationKind {
+  if (value !== "KDS" && value !== "PRINTER" && value !== "KDS_AND_PRINTER" && value !== "NONE") {
+    throw new CatalogError("Stored output station kind is invalid.", 500);
   }
 
   return value;

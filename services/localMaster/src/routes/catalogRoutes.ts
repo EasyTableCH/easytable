@@ -11,6 +11,7 @@ import {
   duplicateCatalogProduct,
   duplicateCatalogTax,
   listCatalogCategories,
+  listCatalogOutputStations,
   listCatalogTaxes,
   updateCatalogCategory,
   updateCatalogProduct,
@@ -31,6 +32,7 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
   app.get("/api/products", async () => ({ data: listProducts() }));
 
   app.get("/api/catalog/categories", async () => ({ data: listCatalogCategories() }));
+  app.get("/api/catalog/output-stations", async () => ({ data: listCatalogOutputStations() }));
   app.post<{ Body: CatalogCategoryCreateRequest }>("/api/catalog/categories", async (request, reply) =>
     reply.code(201).send(createCatalogCategory(request.body))
   );
