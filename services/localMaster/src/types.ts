@@ -199,6 +199,64 @@ export type OpenTableOrderBasket = {
   lines: BasketLine[];
 };
 
+export type StationPickupStatus = "READY" | "ACKNOWLEDGED";
+
+export type StationPickupItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  variants: BasketLineVariant[];
+};
+
+export type StationPickup = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  table_id: string;
+  table_name: string;
+  station: string;
+  status: StationPickupStatus;
+  items: StationPickupItem[];
+  ready_at: number;
+  acknowledged_at: number | null;
+};
+
+export type CreateStationPickupRequest = {
+  order_id?: string;
+  order_number?: string;
+  table_id: string;
+  table_name: string;
+  station: string;
+  items: StationPickupItem[];
+};
+
+export type KdsTicketStatus = "OPEN" | "IN_PROGRESS" | "DONE";
+
+export type KdsTicketItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  variants: BasketLineVariant[];
+};
+
+export type KdsTicket = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  table_id: string;
+  table_name: string;
+  station: string;
+  status: KdsTicketStatus;
+  items: KdsTicketItem[];
+  created_at: number;
+  updated_at: number;
+  done_at: number | null;
+};
+
+export type UpdateKdsTicketStatusRequest = {
+  status: KdsTicketStatus;
+};
+
 export type CreateOrderSnapshotRequest = {
   lines: BasketLine[];
   table_context: TableContext | null;
@@ -409,7 +467,12 @@ export type RealtimeEventType =
   | "DEVICE_DISCONNECTED"
   | "INVALID_MESSAGE"
   | "ORDER_CREATED"
+  | "KDS_TICKET_CREATED"
+  | "KDS_TICKET_UPDATED"
+  | "KDS_TICKETS_REBUILT"
   | "PAYMENT_COMPLETED"
+  | "STATION_PICKUP_READY"
+  | "STATION_PICKUP_ACKNOWLEDGED"
   | "TABLE_UPDATED";
 
 export type RealtimeEvent = {

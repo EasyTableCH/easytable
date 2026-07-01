@@ -72,6 +72,192 @@ export type CatalogTaxInput = {
   sort_order?: number;
 };
 
+export type StaffProduct = {
+  id: string;
+  product_type: CatalogProductType;
+  name: string;
+  category: string;
+  price: number;
+  tax_code_id: string;
+  tax_code_name: string;
+  tax_rate_bps: number;
+  is_available: boolean;
+  station: string;
+};
+
+export type ProductVariantGroupItem = {
+  id: string;
+  variant_group_id: string;
+  name: string;
+  price_delta: number;
+  is_default: boolean;
+  sort_order: number;
+};
+
+export type ProductVariantGroup = {
+  id: string;
+  applies_to: "PRODUCT" | "CATEGORY";
+  product_id: string | null;
+  category: string | null;
+  name: string;
+  selection_type: "SINGLE" | "MULTIPLE";
+  min_select: number;
+  max_select: number;
+  sort_order: number;
+  is_required: boolean;
+  items: ProductVariantGroupItem[];
+};
+
+export type BasketLineVariant = {
+  variant_group_id: string;
+  variant_group_name: string;
+  variant_item_id: string;
+  variant_item_name: string;
+  price_delta: number;
+};
+
+export type BasketLine = {
+  id: string;
+  product_id: string;
+  product_type: StaffProduct["product_type"];
+  product_name: string;
+  product_category: string;
+  base_price: number;
+  tax_code_id: string;
+  tax_code_name: string;
+  tax_rate_bps: number;
+  station: string;
+  variants: BasketLineVariant[];
+  unit_total: number;
+  quantity: number;
+  line_total: number;
+};
+
+export type CreatedOrderSnapshot = {
+  id: string;
+  order_number: string;
+  status: "OPEN" | string;
+  payment_status: "UNPAID" | string;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  created_at: number;
+  table_id: string | null;
+  table_name: string | null;
+  continued_existing_order: boolean;
+};
+
+export type OpenTableOrderBasket = {
+  order_id: string;
+  order_number: string;
+  lines: BasketLine[];
+};
+
+export type TableContext = {
+  tenant_id: string;
+  location_id: string;
+  floor_id: string;
+  area_id: string;
+  table_id: string;
+  table_name: string;
+  area_name: string;
+  floor_name: string;
+  seats: number;
+};
+
+export type TableLayout = {
+  tenant: {
+    id: string;
+    name: string;
+  };
+  location: {
+    id: string;
+    tenant_id: string;
+    name: string;
+  };
+  floors: TableLayoutFloor[];
+};
+
+export type TableLayoutFloor = {
+  id: string;
+  location_id: string;
+  name: string;
+  sort_order: number;
+  areas: TableLayoutArea[];
+};
+
+export type TableLayoutArea = {
+  id: string;
+  floor_id: string;
+  name: string;
+  sort_order: number;
+  tables: TableLayoutTable[];
+};
+
+export type TableLayoutTable = {
+  id: string;
+  area_id: string;
+  name: string;
+  seats: number;
+  sort_order: number;
+  open_order_id: string | null;
+  open_order_number: string | null;
+  open_total: number;
+  open_order_count: number;
+};
+
+export type LocalMasterEvent = {
+  id?: string;
+  type: string;
+  createdAt?: number;
+  payload?: unknown;
+};
+
+export type StationPickupStatus = "READY" | "ACKNOWLEDGED";
+
+export type StationPickupItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  variants: BasketLineVariant[];
+};
+
+export type StationPickup = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  table_id: string;
+  table_name: string;
+  station: string;
+  status: StationPickupStatus;
+  items: StationPickupItem[];
+  ready_at: number;
+  acknowledged_at: number | null;
+};
+
+export type KdsTicketStatus = "OPEN" | "IN_PROGRESS" | "DONE";
+
+export type KdsTicketItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  variants: BasketLineVariant[];
+};
+
+export type KdsTicket = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  table_id: string;
+  table_name: string;
+  station: string;
+  status: KdsTicketStatus;
+  items: KdsTicketItem[];
+  created_at: number;
+  updated_at: number;
+  done_at: number | null;
+};
+
 const configuredUrl = import.meta.env.VITE_LOCAL_REALTIME_URL as string | undefined;
 
 export function getLocalMasterUrl() {
@@ -84,6 +270,105 @@ export function getLocalMasterUrl() {
 
 export function loadCatalog() {
   return readJson<CatalogProduct[]>("/api/catalog", []);
+}
+
+export function loadTableLayout() {
+  return readJson<TableLayout>("/api/table-layout", {
+    tenant: { id: "", name: "" },
+    location: { id: "", tenant_id: "", name: "" },
+    floors: [],
+  });
+}
+
+export function loadProducts() {
+  return readJson<StaffProduct[]>("/api/products", []);
+}
+
+export function loadProductVariantGroups(productId: string) {
+  return readJson<ProductVariantGroup[]>("/api/product-variant-groups/" + encodeURIComponent(productId), []);
+}
+
+export function loadOpenTableOrderBasket(tableId: string) {
+  return readJson<OpenTableOrderBasket | null>("/api/tables/" + encodeURIComponent(tableId) + "/open-basket", null);
+}
+
+export function createOrderSnapshot(request: {
+  lines: BasketLine[];
+  table_context: TableContext;
+}) {
+  return writeJson<CreatedOrderSnapshot>("/api/order-snapshots", "POST", { request });
+}
+
+export function loadStationPickups(status: StationPickupStatus | "ALL" = "READY") {
+  return readJson<StationPickup[]>("/api/station-pickups?status=" + encodeURIComponent(status), []);
+}
+
+export function acknowledgeStationPickup(pickupId: string) {
+  return writeJson<StationPickup>("/api/station-pickups/" + encodeURIComponent(pickupId) + "/acknowledge", "POST");
+}
+
+export function loadKdsTickets(station?: string) {
+  const query = station ? "?station=" + encodeURIComponent(station) : "";
+
+  return readJson<KdsTicket[]>("/api/kds-tickets" + query, []);
+}
+
+export function updateKdsTicketStatus(ticketId: string, status: KdsTicketStatus) {
+  return writeJson<KdsTicket>("/api/kds-tickets/" + encodeURIComponent(ticketId) + "/status", "POST", { request: { status } });
+}
+
+export function subscribeLocalMasterEvents(onEvent: (event: LocalMasterEvent) => void) {
+  let socket: WebSocket | null = null;
+  let reconnectTimer: number | undefined;
+  let shouldReconnect = true;
+
+  function connect() {
+    const apiUrl = new URL(getLocalMasterUrl());
+    apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+    apiUrl.pathname = "/realtime";
+    apiUrl.search = "";
+    apiUrl.hash = "";
+
+    socket = new WebSocket(apiUrl.toString());
+
+    socket.addEventListener("open", () => {
+      socket?.send(JSON.stringify({ type: "HELLO", payload: { role: "STAFF", deviceId: "staff-web" } }));
+    });
+
+    socket.addEventListener("message", (message) => {
+      if (typeof message.data !== "string") {
+        return;
+      }
+
+      try {
+        onEvent(JSON.parse(message.data) as LocalMasterEvent);
+      } catch (error) {
+        console.warn("Could not parse Local Master realtime event.", error);
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      if (shouldReconnect) {
+        reconnectTimer = window.setTimeout(connect, 1_000);
+      }
+    });
+
+    socket.addEventListener("error", () => {
+      socket?.close();
+    });
+  }
+
+  connect();
+
+  return () => {
+    shouldReconnect = false;
+
+    if (reconnectTimer !== undefined) {
+      window.clearTimeout(reconnectTimer);
+    }
+
+    socket?.close();
+  };
 }
 
 export function loadCatalogCategories() {

@@ -19,6 +19,11 @@ import type {
   PosSettingsFile,
   ProductVariantGroup,
   ProductVariantGroupItem,
+  CreateStationPickupRequest,
+  KdsTicket,
+  KdsTicketStatus,
+  StationPickup,
+  StationPickupStatus,
   Table,
   SaveDayCloseRequest,
   SavedDayClose,
@@ -77,6 +82,8 @@ const variantGroups: ProductVariantGroup[] = [
 
 const staffOrders = readState<Order[]>("staffOrders", []);
 const posOrders = readState<PosOrderSnapshot[]>("posOrders", []);
+const kdsTickets = readState<KdsTicket[]>("kdsTickets", []);
+const stationPickups = readState<StationPickup[]>("stationPickups", []);
 const payments = readState<LocalPayment[]>("payments", []);
 const dayCloses = new Map<string, StoredDayClose>(readState<Array<[string, StoredDayClose]>>("dayCloses", []));
 let nextPosOrderNumber = 1;
@@ -110,6 +117,8 @@ export type CreateOrderResult = {
 export type OrderSnapshotResult = {
   order: CreatedOrderSnapshot;
   table: Table;
+  kdsTicketsCreated: KdsTicket[];
+  kdsTicketsUpdated: KdsTicket[];
 };
 
 export type PaymentResult = {
@@ -143,6 +152,14 @@ function persistStaffOrders() {
 
 function persistPosOrders() {
   writeState("posOrders", posOrders);
+}
+
+function persistKdsTickets() {
+  writeState("kdsTickets", kdsTickets);
+}
+
+function persistStationPickups() {
+  writeState("stationPickups", stationPickups);
 }
 
 function persistPayments() {
@@ -247,6 +264,90 @@ export function listOpenOrders() {
     ...staffOrders,
     ...posOrders.filter((order) => order.status === "OPEN" && order.payment_status === "UNPAID")
   ];
+}
+
+export function listStationPickups(status: StationPickupStatus | "ALL" = "READY") {
+  return stationPickups
+    .filter((pickup) => status === "ALL" || pickup.status === status)
+    .slice()
+    .sort((left, right) => left.ready_at - right.ready_at || left.station.localeCompare(right.station));
+}
+
+export function listKdsTickets(station?: string) {
+  const normalizedStation = station?.trim();
+
+  return kdsTickets
+    .filter((ticket) => !normalizedStation || ticket.station === normalizedStation)
+    .slice()
+    .sort((left, right) => left.created_at - right.created_at || left.order_number.localeCompare(right.order_number));
+}
+
+export function updateKdsTicketStatus(ticketId: string, status: KdsTicketStatus) {
+  const ticket = kdsTickets.find((entry) => entry.id === ticketId);
+
+  if (!ticket) {
+    throw new Error("KDS ticket not found.");
+  }
+
+  if (!isKdsTicketStatus(status)) {
+    throw new Error("KDS ticket status is invalid.");
+  }
+
+  const now = Date.now();
+  ticket.status = status;
+  ticket.updated_at = now;
+  ticket.done_at = status === "DONE" ? now : null;
+  persistKdsTickets();
+
+  const pickup = status === "DONE" ? createStationPickupFromKdsTicket(ticket) : null;
+
+  return { ticket, pickup };
+}
+
+export function createStationPickup(request: CreateStationPickupRequest) {
+  validateStationPickupRequest(request);
+
+  const now = Date.now();
+  const pickup: StationPickup = {
+    id: scopedId("pickup", now, stationPickups.length),
+    order_id: request.order_id?.trim() || scopedId("ord_external", now, stationPickups.length),
+    order_number: request.order_number?.trim() || "READY-" + String(stationPickups.length + 1).padStart(4, "0"),
+    table_id: request.table_id.trim(),
+    table_name: request.table_name.trim(),
+    station: request.station.trim(),
+    status: "READY",
+    items: request.items.map((item) => ({
+      product_id: item.product_id.trim(),
+      product_name: item.product_name.trim(),
+      quantity: item.quantity,
+      variants: item.variants.map((variant) => ({ ...variant }))
+    })),
+    ready_at: now,
+    acknowledged_at: null
+  };
+
+  stationPickups.push(pickup);
+  persistStationPickups();
+
+  return pickup;
+}
+
+export function acknowledgeStationPickup(pickupId: string) {
+  const pickup = stationPickups.find((entry) => entry.id === pickupId);
+
+  if (!pickup) {
+    throw new Error("Station pickup not found.");
+  }
+
+  if (pickup.status === "ACKNOWLEDGED") {
+    return pickup;
+  }
+
+  pickup.status = "ACKNOWLEDGED";
+  pickup.acknowledged_at = Date.now();
+  persistStationPickups();
+
+  return pickup;
 }
 
 
@@ -375,10 +476,13 @@ export function createOrderSnapshot(request: CreateOrderSnapshotRequest): OrderS
   }
 
   const savedOrder = saveTableOrderSnapshot(request, Date.now());
+  const kdsTicketChanges = rebuildKdsTicketsForOrder(savedOrder.order);
 
   return {
     order: toCreatedOrderSnapshot(savedOrder.order, savedOrder.continuedExistingOrder),
-    table: tableFromContext(tableContext, "OPEN")
+    table: tableFromContext(tableContext, "OPEN"),
+    kdsTicketsCreated: kdsTicketChanges.created,
+    kdsTicketsUpdated: kdsTicketChanges.updated
   };
 }
 
@@ -525,6 +629,99 @@ function saveTableOrderSnapshot(
   persistPosOrders();
 
   return { order, continuedExistingOrder: false };
+}
+
+function rebuildKdsTicketsForOrder(order: PosOrderSnapshot) {
+  const now = Date.now();
+  const groupedLines = new Map<string, BasketLine[]>();
+  const created: KdsTicket[] = [];
+  const updated: KdsTicket[] = [];
+
+  for (const line of order.lines) {
+    const station = line.station.trim();
+
+    if (!station) {
+      continue;
+    }
+
+    const lines = groupedLines.get(station) ?? [];
+    lines.push(line);
+    groupedLines.set(station, lines);
+  }
+
+  for (const [station, lines] of groupedLines.entries()) {
+    const ticketId = kdsTicketId(order.id, station);
+    const existingTicket = kdsTickets.find((ticket) => ticket.id === ticketId);
+    const items = lines.map((line) => ({
+      product_id: line.product_id,
+      product_name: line.product_name,
+      quantity: line.quantity,
+      variants: line.variants.map((variant) => ({ ...variant }))
+    }));
+
+    if (existingTicket) {
+      existingTicket.order_number = order.order_number;
+      existingTicket.table_id = order.table_context.table_id;
+      existingTicket.table_name = order.table_context.table_name;
+      existingTicket.items = items;
+      existingTicket.updated_at = now;
+      existingTicket.done_at = existingTicket.status === "DONE" ? existingTicket.done_at : null;
+      updated.push(existingTicket);
+    } else {
+      const ticket: KdsTicket = {
+        id: ticketId,
+        order_id: order.id,
+        order_number: order.order_number,
+        table_id: order.table_context.table_id,
+        table_name: order.table_context.table_name,
+        station,
+        status: "OPEN",
+        items,
+        created_at: now,
+        updated_at: now,
+        done_at: null
+      };
+
+      kdsTickets.push(ticket);
+      created.push(ticket);
+    }
+  }
+
+  for (let index = kdsTickets.length - 1; index >= 0; index -= 1) {
+    const ticket = kdsTickets[index];
+
+    if (ticket.order_id === order.id && !groupedLines.has(ticket.station)) {
+      kdsTickets.splice(index, 1);
+    }
+  }
+
+  persistKdsTickets();
+
+  return { created, updated };
+}
+
+function createStationPickupFromKdsTicket(ticket: KdsTicket) {
+  const existingReadyPickup = stationPickups.find(
+    (pickup) => pickup.order_id === ticket.order_id && pickup.station === ticket.station && pickup.status === "READY"
+  );
+
+  if (existingReadyPickup) {
+    return existingReadyPickup;
+  }
+
+  return createStationPickup({
+    order_id: ticket.order_id,
+    order_number: ticket.order_number,
+    table_id: ticket.table_id,
+    table_name: ticket.table_name,
+    station: ticket.station,
+    items: ticket.items.map((item) => ({
+      product_id: item.product_id,
+      product_name: item.product_name,
+      quantity: item.quantity,
+      variants: item.variants.map((variant) => ({ ...variant }))
+    }))
+  });
 }
 
 function toLayoutTable(
@@ -699,6 +896,38 @@ function validateOrderLines(lines: BasketLine[]) {
   }
 }
 
+function validateStationPickupRequest(request: CreateStationPickupRequest) {
+  if (!request.table_id?.trim()) {
+    throw new Error("Station pickup requires table_id.");
+  }
+
+  if (!request.table_name?.trim()) {
+    throw new Error("Station pickup requires table_name.");
+  }
+
+  if (!request.station?.trim()) {
+    throw new Error("Station pickup requires station.");
+  }
+
+  if (!Array.isArray(request.items) || request.items.length === 0) {
+    throw new Error("Station pickup requires at least one item.");
+  }
+
+  for (const item of request.items) {
+    if (!item.product_id?.trim() || !item.product_name?.trim()) {
+      throw new Error("Station pickup items require product id and name.");
+    }
+
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      throw new Error("Station pickup items require a positive quantity.");
+    }
+  }
+}
+
+function isKdsTicketStatus(value: string): value is KdsTicketStatus {
+  return value === "OPEN" || value === "IN_PROGRESS" || value === "DONE";
+}
+
 
 function buildProductSales(orders: PosOrderSnapshot[]): DayCloseProductSale[] {
   const salesByProduct = new Map<string, DayCloseProductSale>();
@@ -817,6 +1046,10 @@ function nextOrderNumber() {
 
 function scopedId(prefix: string, timestamp: number, index: number) {
   return prefix + "_" + timestamp + "_" + index;
+}
+
+function kdsTicketId(orderId: string, station: string) {
+  return "kds_" + orderId + "_" + station.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
 
 function cloneBasketLines(lines: BasketLine[]) {

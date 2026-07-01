@@ -31,9 +31,16 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     "/api/order-snapshots",
     { schema: createOrderSnapshotSchema },
     async (request, reply) => {
-      const { order, table } = createOrderSnapshot(request.body.request);
+      const { order, table, kdsTicketsCreated, kdsTicketsUpdated } = createOrderSnapshot(request.body.request);
 
       broadcast("ORDER_CREATED", { order });
+      for (const ticket of kdsTicketsCreated) {
+        broadcast("KDS_TICKET_CREATED", { ticket });
+      }
+      for (const ticket of kdsTicketsUpdated) {
+        broadcast("KDS_TICKET_UPDATED", { ticket });
+      }
+      broadcast("KDS_TICKETS_REBUILT", { order });
       broadcast("TABLE_UPDATED", { table });
 
       return reply.code(201).send(order);

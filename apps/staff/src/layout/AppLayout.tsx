@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChefHat, ClipboardList, LayoutDashboard, Package, Percent, ShieldCheck, Tags } from "lucide-react";
+import { Bell, ChefHat, ClipboardList, LayoutDashboard, Package, Percent, ReceiptText, ShieldCheck, Tags } from "lucide-react";
 
 import { Separator } from "@easytable/ui/components/separator";
 import {
@@ -24,7 +24,7 @@ import {
 } from "@easytable/ui/components/sidebar";
 import { TooltipProvider } from "@easytable/ui/components/tooltip";
 
-import type { AppView, OwnerCatalogSection, StaffModule } from "./navigation";
+import type { AppView, OwnerCatalogSection, StaffModule, StaffScreen } from "./navigation";
 
 type AppLayoutProps = {
   view: AppView;
@@ -50,6 +50,15 @@ const ownerCatalogItems: Array<{
   { section: "products", label: "Produkte", icon: Package },
   { section: "categories", label: "Kategorien", icon: Tags },
   { section: "taxes", label: "Steuern", icon: Percent },
+];
+
+const staffItems: Array<{
+  screen: Exclude<StaffScreen, "order">;
+  label: string;
+  icon: typeof ReceiptText;
+}> = [
+  { screen: "orders", label: "Bestellungen", icon: ReceiptText },
+  { screen: "pickups", label: "Abholungen", icon: Bell },
 ];
 
 export function AppLayout({ view, onNavigate, children }: AppLayoutProps) {
@@ -101,7 +110,7 @@ function AppSidebar({ view, onNavigate }: Pick<AppLayoutProps, "view" | "onNavig
                     <SidebarMenuItem key={item.module}>
                       <SidebarMenuButton
                         isActive={view.module === "owner"}
-                        onClick={() => onNavigate({ module: "owner", ownerSection: "products" })}
+                        onClick={() => onNavigate({ module: "owner", ownerSection: "products", staffScreen: "orders", tableContext: null })}
                         tooltip={item.label}
                         type="button"
                       >
@@ -116,10 +125,43 @@ function AppSidebar({ view, onNavigate }: Pick<AppLayoutProps, "view" | "onNavig
                             <SidebarMenuSubItem key={catalogItem.section}>
                               <SidebarMenuSubButton
                                 data-active={view.module === "owner" && view.ownerSection === catalogItem.section}
-                                onClick={() => onNavigate({ module: "owner", ownerSection: catalogItem.section })}
+                                onClick={() => onNavigate({ module: "owner", ownerSection: catalogItem.section, staffScreen: "orders", tableContext: null })}
                               >
                                 <CatalogIcon className="size-3.5" />
                                 <span>{catalogItem.label}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </SidebarMenuItem>
+                  );
+                }
+
+                if (item.module === "staff") {
+                  return (
+                    <SidebarMenuItem key={item.module}>
+                      <SidebarMenuButton
+                        isActive={view.module === "staff"}
+                        onClick={() => onNavigate({ module: "staff", ownerSection: "products", staffScreen: "orders", tableContext: null })}
+                        tooltip={item.label}
+                        type="button"
+                      >
+                        <Icon className="size-4" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                      <SidebarMenuSub>
+                        {staffItems.map((staffItem) => {
+                          const StaffIcon = staffItem.icon;
+
+                          return (
+                            <SidebarMenuSubItem key={staffItem.screen}>
+                              <SidebarMenuSubButton
+                                data-active={view.module === "staff" && view.staffScreen === staffItem.screen}
+                                onClick={() => onNavigate({ module: "staff", ownerSection: "products", staffScreen: staffItem.screen, tableContext: null })}
+                              >
+                                <StaffIcon className="size-3.5" />
+                                <span>{staffItem.label}</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                           );
@@ -133,7 +175,7 @@ function AppSidebar({ view, onNavigate }: Pick<AppLayoutProps, "view" | "onNavig
                   <SidebarMenuItem key={item.module}>
                     <SidebarMenuButton
                       isActive={view.module === item.module}
-                      onClick={() => onNavigate({ module: item.module, ownerSection: "products" })}
+                      onClick={() => onNavigate({ module: item.module, ownerSection: "products", staffScreen: "orders", tableContext: null })}
                       tooltip={item.label}
                       type="button"
                     >
@@ -167,5 +209,13 @@ function viewTitle(view: AppView) {
     return view.ownerSection === "products" ? "Katalog / Produkte" : view.ownerSection === "categories" ? "Katalog / Kategorien" : "Katalog / Steuern";
   }
 
-  return view.module === "staff" ? "Staff" : "KDS";
+  if (view.module === "staff") {
+    if (view.staffScreen === "order" && view.tableContext) {
+      return `Staff / Tisch ${view.tableContext.table_name}`;
+    }
+
+    return view.staffScreen === "pickups" ? "Staff / Abholungen" : "Staff / Bestellungen";
+  }
+
+  return "KDS";
 }
