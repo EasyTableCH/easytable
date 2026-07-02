@@ -143,6 +143,7 @@ export const catalogCategories = sqliteTable("catalog_categories", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   sortOrder: integer("sort_order").notNull(),
+  defaultStationId: text("default_station_id").references(() => catalogOutputStations.id, { onDelete: "set null" }),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull()
 });

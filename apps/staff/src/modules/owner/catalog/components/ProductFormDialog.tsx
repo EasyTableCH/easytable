@@ -79,6 +79,14 @@ export function ProductFormDialog({ categories, outputStations, taxes, product, 
     }
   }
 
+  function handleCategoryChange(categoryId: string) {
+    setForm({
+      ...form,
+      category_id: categoryId,
+      station_id: !isEdit ? defaultStationIdForCategory(categories, categoryId) : form.station_id,
+    });
+  }
+
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <Button onClick={() => setOpen(true)} size={isEdit ? "icon-sm" : "default"} title={isEdit ? "Bearbeiten" : "Produkt erstellen"} type="button" variant={isEdit ? "ghost" : "default"}>
@@ -102,7 +110,7 @@ export function ProductFormDialog({ categories, outputStations, taxes, product, 
               <select
                 className="h-9 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 disabled={categories.length === 0}
-                onChange={(event) => setForm({ ...form, category_id: event.target.value })}
+                onChange={(event) => handleCategoryChange(event.target.value)}
                 required
                 value={form.category_id}
               >
@@ -189,15 +197,21 @@ export function DuplicateIconButton({ onClick }: { onClick: () => void }) {
 }
 
 function createInitialState(categories: CatalogCategory[], taxes: CatalogTax[], product?: CatalogProduct): ProductFormState {
+  const categoryId = product?.category_id ?? categories[0]?.id ?? "";
+
   return {
-    category_id: product?.category_id ?? categories[0]?.id ?? "",
+    category_id: categoryId,
     tax_id: product?.tax_id ?? taxes[0]?.id ?? "",
     product_type: product?.product_type ?? "BASIC",
     name: product?.name ?? "",
     price: formatCentsForInput(product?.price ?? 0),
-    station_id: product?.station_id ?? "",
+    station_id: product ? product.station_id ?? "" : defaultStationIdForCategory(categories, categoryId),
     is_available: product?.is_available ?? true,
   };
+}
+
+function defaultStationIdForCategory(categories: CatalogCategory[], categoryId: string) {
+  return categories.find((category) => category.id === categoryId)?.default_station_id ?? "";
 }
 
 function formatTaxRate(rateBps: number) {

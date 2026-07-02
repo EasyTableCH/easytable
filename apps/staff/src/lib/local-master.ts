@@ -35,6 +35,8 @@ export type CatalogCategory = {
   id: string;
   name: string;
   sort_order: number;
+  default_station_id: string | null;
+  default_station_name: string | null;
   product_count: number;
   created_at: number;
   updated_at: number;
@@ -63,6 +65,7 @@ export type CatalogProductInput = {
 export type CatalogCategoryInput = {
   name: string;
   sort_order?: number;
+  default_station_id?: string | null;
 };
 
 export type CatalogTaxInput = {

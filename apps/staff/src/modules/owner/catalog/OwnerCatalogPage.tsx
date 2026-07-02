@@ -117,6 +117,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
           onDuplicate={(categoryId) => runAction(async () => void (await duplicateCatalogCategory(categoryId)))}
           onReload={refreshCatalog}
           onUpdate={(categoryId, input) => runAction(async () => void (await updateCatalogCategory(categoryId, input)))}
+          outputStations={outputStations}
         />
       ) : (
         <TaxView

@@ -62,6 +62,8 @@ type CatalogCategoryRow = {
   id: string;
   name: string;
   sortOrder: number;
+  defaultStationId: string | null;
+  defaultStationName: string | null;
   productCount: number;
   createdAt: number;
   updatedAt: number;
@@ -131,6 +133,7 @@ export function listCatalogCategories(): CatalogCategory[] {
     .select(categorySelectFields)
     .from(catalogCategories)
     .leftJoin(catalogProducts, eq(catalogProducts.categoryId, catalogCategories.id))
+    .leftJoin(catalogOutputStations, eq(catalogOutputStations.id, catalogCategories.defaultStationId))
     .groupBy(catalogCategories.id)
     .orderBy(asc(catalogCategories.sortOrder), asc(catalogCategories.name))
     .all()
@@ -166,7 +169,7 @@ export function createCatalogProduct(request: CatalogProductCreateRequest): Cata
   ensureCatalogSeeded();
 
   const now = Date.now();
-  const input = normalizeProductInput(request);
+  const input = normalizeProductInput(withCategoryDefaultStation(request));
   const tax = requireTax(input.tax_id);
   const station = input.station_id ? requireOutputStation(input.station_id) : null;
   const id = "prod_" + randomUUID();
@@ -258,11 +261,13 @@ export function createCatalogCategory(request: CatalogCategoryCreateRequest): Ca
   const name = normalizeName(request.name, "Category name is required.");
   ensureUniqueCategoryName(name);
   const sortOrder = normalizeOptionalInteger(request.sort_order, nextCategorySortOrder());
+  const defaultStationId = normalizeOptionalStationId(request.default_station_id);
+  const defaultStation = defaultStationId ? requireOutputStation(defaultStationId) : null;
   const id = "cat_" + randomUUID();
 
   getDrizzleDatabase()
     .insert(catalogCategories)
-    .values({ id, name, sortOrder, createdAt: now, updatedAt: now })
+    .values({ id, name, sortOrder, defaultStationId: defaultStation?.id ?? null, createdAt: now, updatedAt: now })
     .run();
 
   return requireCategory(id);
@@ -273,16 +278,32 @@ export function updateCatalogCategory(categoryId: string, request: CatalogCatego
   const current = requireCategory(categoryId);
   const name = request.name === undefined ? current.name : normalizeName(request.name, "Category name is required.");
   const sortOrder = request.sort_order === undefined ? current.sort_order : normalizeOptionalInteger(request.sort_order, current.sort_order);
+  const defaultStationId = request.default_station_id === undefined
+    ? current.default_station_id
+    : normalizeOptionalStationId(request.default_station_id);
+  const defaultStation = defaultStationId ? requireOutputStation(defaultStationId) : null;
+  const normalizedDefaultStationId = defaultStation?.id ?? null;
+  const defaultStationChanged = request.default_station_id !== undefined && normalizedDefaultStationId !== current.default_station_id;
 
   if (name !== current.name) {
     ensureUniqueCategoryName(name, categoryId);
   }
 
-  getDrizzleDatabase()
-    .update(catalogCategories)
-    .set({ name, sortOrder, updatedAt: Date.now() })
-    .where(eq(catalogCategories.id, categoryId))
-    .run();
+  const now = Date.now();
+
+  getDrizzleDatabase().transaction((tx) => {
+    tx.update(catalogCategories)
+      .set({ name, sortOrder, defaultStationId: normalizedDefaultStationId, updatedAt: now })
+      .where(eq(catalogCategories.id, categoryId))
+      .run();
+
+    if (defaultStationChanged) {
+      tx.update(catalogProducts)
+        .set({ stationId: normalizedDefaultStationId, updatedAt: now })
+        .where(eq(catalogProducts.categoryId, categoryId))
+        .run();
+    }
+  });
 
   return requireCategory(categoryId);
 }
@@ -290,7 +311,11 @@ export function updateCatalogCategory(categoryId: string, request: CatalogCatego
 export function duplicateCatalogCategory(categoryId: string): CatalogCategory {
   const current = requireCategory(categoryId);
 
-  return createCatalogCategory({ name: uniqueCategoryName(current.name + " Kopie"), sort_order: current.sort_order + 1 });
+  return createCatalogCategory({
+    name: uniqueCategoryName(current.name + " Kopie"),
+    sort_order: current.sort_order + 1,
+    default_station_id: current.default_station_id
+  });
 }
 
 export function deleteCatalogCategory(categoryId: string) {
@@ -394,6 +419,8 @@ const categorySelectFields = {
   id: catalogCategories.id,
   name: catalogCategories.name,
   sortOrder: catalogCategories.sortOrder,
+  defaultStationId: catalogCategories.defaultStationId,
+  defaultStationName: catalogOutputStations.name,
   createdAt: catalogCategories.createdAt,
   updatedAt: catalogCategories.updatedAt,
   productCount: count(catalogProducts.id)
@@ -431,9 +458,10 @@ function seedCategoriesAndProducts() {
   db.transaction((tx) => {
     categories.forEach((name, index) => {
       const id = "cat_" + slugify(name);
+      const defaultStationId = defaultStationForCategory(name);
       categoryIdsByName.set(name, id);
       tx.insert(catalogCategories)
-        .values({ id, name, sortOrder: (index + 1) * 10, createdAt: now, updatedAt: now })
+        .values({ id, name, sortOrder: (index + 1) * 10, defaultStationId, createdAt: now, updatedAt: now })
         .run();
     });
 
@@ -534,6 +562,19 @@ function createSeedProduct(id: string, productType: PosProduct["product_type"], 
   return { id, product_type: productType, name, category, price, tax_code_id: taxCodeId, tax_code_name: taxCodeName, tax_rate_bps: taxRateBps, is_available: true, isAvailable: true, station_id: stationId, station_name: stationName, station: stationName ?? "" };
 }
 
+function defaultStationForCategory(category: string) {
+  return defaultProducts.find((product) => product.category === category && product.station_id)?.station_id ?? null;
+}
+
+function withCategoryDefaultStation(request: CatalogProductCreateRequest): CatalogProductCreateRequest {
+  if (request.station_id !== undefined) {
+    return request;
+  }
+
+  const category = requireCategory(request.category_id);
+  return { ...request, station_id: category.default_station_id };
+}
+
 function normalizeProductInput(request: CatalogProductCreateRequest): Required<CatalogProductCreateRequest> {
   const categoryId = normalizeName(request.category_id, "Category is required.");
   const taxId = normalizeName(request.tax_id, "Tax is required.");
@@ -567,7 +608,7 @@ function requireTax(taxId: string): CatalogTax {
 
 function requireOutputStation(stationId: string): CatalogOutputStation {
   const station = getOutputStationById(stationId);
-  if (!station) throw new CatalogError("Output station not found.", 404);
+  if (!station || !station.is_active) throw new CatalogError("Output station not found.", 404);
   return station;
 }
 
@@ -576,6 +617,7 @@ function getCategoryById(categoryId: string): CatalogCategory | null {
     .select(categorySelectFields)
     .from(catalogCategories)
     .leftJoin(catalogProducts, eq(catalogProducts.categoryId, catalogCategories.id))
+    .leftJoin(catalogOutputStations, eq(catalogOutputStations.id, catalogCategories.defaultStationId))
     .where(eq(catalogCategories.id, categoryId))
     .groupBy(catalogCategories.id)
     .get();
@@ -692,7 +734,7 @@ function toCatalogProduct(row: CatalogProductRow): CatalogProduct {
 }
 
 function toCatalogCategory(row: CatalogCategoryRow): CatalogCategory {
-  return { id: row.id, name: row.name, sort_order: row.sortOrder, product_count: row.productCount, created_at: row.createdAt, updated_at: row.updatedAt };
+  return { id: row.id, name: row.name, sort_order: row.sortOrder, default_station_id: row.defaultStationId, default_station_name: row.defaultStationName, product_count: row.productCount, created_at: row.createdAt, updated_at: row.updatedAt };
 }
 
 function toCatalogTax(row: CatalogTaxRow): CatalogTax {

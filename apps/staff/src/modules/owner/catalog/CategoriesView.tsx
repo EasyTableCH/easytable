@@ -12,12 +12,13 @@ import {
   TableRow,
 } from "@easytable/ui/components/table";
 
-import type { CatalogCategory, CatalogCategoryInput } from "../../../lib/local-master";
+import type { CatalogCategory, CatalogCategoryInput, CatalogOutputStation } from "../../../lib/local-master";
 import { CatalogFilters } from "./components/CatalogFilters";
 import { CategoryFormDialog, DuplicateCategoryButton } from "./components/CategoryFormDialog";
 
 type CategoriesViewProps = {
   categories: CatalogCategory[];
+  outputStations: CatalogOutputStation[];
   isLoading: boolean;
   onReload: () => void;
   onCreate: (input: CatalogCategoryInput) => Promise<void>;
@@ -28,6 +29,7 @@ type CategoriesViewProps = {
 
 export function CategoriesView({
   categories,
+  outputStations,
   isLoading,
   onReload,
   onCreate,
@@ -71,7 +73,7 @@ export function CategoriesView({
             <RefreshCw className={isLoading ? "size-4 animate-spin" : "size-4"} />
             Laden
           </Button>
-          <CategoryFormDialog mode="create" onSubmit={onCreate} />
+          <CategoryFormDialog mode="create" onSubmit={onCreate} outputStations={outputStations} />
         </div>
       </div>
 
@@ -89,6 +91,7 @@ export function CategoriesView({
                 <TableHead>Name</TableHead>
                 <TableHead className="text-right">Produkte</TableHead>
                 <TableHead className="text-right">Sortierung</TableHead>
+                <TableHead>Standard-Station</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-32 text-right">Aktionen</TableHead>
               </TableRow>
@@ -99,6 +102,7 @@ export function CategoriesView({
                   <TableCell className="font-medium">{category.name}</TableCell>
                   <TableCell className="text-right tabular-nums">{category.product_count}</TableCell>
                   <TableCell className="text-right tabular-nums">{category.sort_order}</TableCell>
+                  <TableCell>{category.default_station_name ?? "Keine Station"}</TableCell>
                   <TableCell>
                     <Badge variant={category.product_count > 0 ? "secondary" : "outline"}>
                       {category.product_count > 0 ? "In Nutzung" : "Leer"}
@@ -110,6 +114,7 @@ export function CategoriesView({
                         category={category}
                         mode="edit"
                         onSubmit={(input) => onUpdate(category.id, input)}
+                        outputStations={outputStations}
                       />
                       <DuplicateCategoryButton onClick={() => void onDuplicate(category.id)} />
                       <Button onClick={() => void handleDelete(category)} size="icon-sm" title="Loeschen" type="button" variant="ghost">
@@ -123,7 +128,7 @@ export function CategoriesView({
 
               {!isLoading && filteredCategories.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                     Keine Kategorien gefunden.
                   </TableCell>
                 </TableRow>
@@ -131,7 +136,7 @@ export function CategoriesView({
 
               {isLoading ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                     Kategorien werden geladen.
                   </TableCell>
                 </TableRow>

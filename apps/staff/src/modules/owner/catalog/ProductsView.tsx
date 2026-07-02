@@ -3,6 +3,7 @@ import { RefreshCw, Trash2 } from "lucide-react";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
+import { Switch } from "@easytable/ui/components/switch";
 import {
   Table,
   TableBody,
@@ -25,7 +26,7 @@ type ProductsViewProps = {
   isLoading: boolean;
   onReload: () => void;
   onCreate: (input: CatalogProductInput) => Promise<void>;
-  onUpdate: (productId: string, input: CatalogProductInput) => Promise<void>;
+  onUpdate: (productId: string, input: Partial<CatalogProductInput>) => Promise<void>;
   onDelete: (productId: string) => Promise<void>;
   onDuplicate: (productId: string) => Promise<void>;
 };
@@ -47,6 +48,7 @@ export function ProductsView({
   const [station, setStation] = useState("all");
   const [type, setType] = useState("all");
   const [availability, setAvailability] = useState("all");
+  const [updatingStatusProductId, setUpdatingStatusProductId] = useState<string | null>(null);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -75,6 +77,16 @@ export function ProductsView({
     }
 
     await onDelete(product.id);
+  }
+
+  async function handleAvailabilityChange(product: CatalogProduct, isAvailable: boolean) {
+    setUpdatingStatusProductId(product.id);
+
+    try {
+      await onUpdate(product.id, { is_available: isAvailable });
+    } finally {
+      setUpdatingStatusProductId(null);
+    }
   }
 
   return (
@@ -171,9 +183,15 @@ export function ProductsView({
                   <TableCell>{product.tax_code_name}</TableCell>
                   <TableCell>{product.station_name ?? "Keine Station"}</TableCell>
                   <TableCell>
-                    <Badge variant={product.is_available ? "secondary" : "destructive"}>
-                      {product.is_available ? "Verfügbar" : "Aus"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={product.is_available}
+                        disabled={updatingStatusProductId === product.id}
+                        onCheckedChange={(checked) => void handleAvailabilityChange(product, checked)}
+                        size="sm"
+                      />
+                      <span className="text-sm text-muted-foreground">{product.is_available ? "Verfügbar" : "Aus"}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">

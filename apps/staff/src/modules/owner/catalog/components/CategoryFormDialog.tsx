@@ -12,10 +12,11 @@ import {
 } from "@easytable/ui/components/dialog";
 import { Input } from "@easytable/ui/components/input";
 
-import type { CatalogCategory, CatalogCategoryInput } from "../../../../lib/local-master";
+import type { CatalogCategory, CatalogCategoryInput, CatalogOutputStation } from "../../../../lib/local-master";
 
 type CategoryFormDialogProps = {
   category?: CatalogCategory;
+  outputStations: CatalogOutputStation[];
   mode: "create" | "edit";
   onSubmit: (input: CatalogCategoryInput) => Promise<void>;
 };
@@ -23,9 +24,10 @@ type CategoryFormDialogProps = {
 type CategoryFormState = {
   name: string;
   sort_order: string;
+  default_station_id: string;
 };
 
-export function CategoryFormDialog({ category, mode, onSubmit }: CategoryFormDialogProps) {
+export function CategoryFormDialog({ category, outputStations, mode, onSubmit }: CategoryFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CategoryFormState>(() => createInitialState(category));
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export function CategoryFormDialog({ category, mode, onSubmit }: CategoryFormDia
       await onSubmit({
         name: form.name.trim(),
         sort_order: Number(form.sort_order),
+        default_station_id: form.default_station_id || null,
       });
       setOpen(false);
     } catch (submitError) {
@@ -78,6 +81,21 @@ export function CategoryFormDialog({ category, mode, onSubmit }: CategoryFormDia
             <span className="text-sm font-medium">Sortierung</span>
             <Input min="0" onChange={(event) => setForm({ ...form, sort_order: event.target.value })} required type="number" value={form.sort_order} />
           </label>
+          <label className="grid gap-1.5">
+            <span className="text-sm font-medium">Standard-Station</span>
+            <select
+              className="h-9 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              onChange={(event) => setForm({ ...form, default_station_id: event.target.value })}
+              value={form.default_station_id}
+            >
+              <option value="">Keine Station</option>
+              {outputStations.map((station) => (
+                <option key={station.id} value={station.id}>
+                  {station.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
@@ -105,5 +123,6 @@ function createInitialState(category?: CatalogCategory): CategoryFormState {
   return {
     name: category?.name ?? "",
     sort_order: String(category?.sort_order ?? 10),
+    default_station_id: category?.default_station_id ?? "",
   };
 }

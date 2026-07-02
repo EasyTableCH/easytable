@@ -38,6 +38,8 @@ export type CatalogCategory = {
   id: string;
   name: string;
   sort_order: number;
+  default_station_id: string | null;
+  default_station_name: string | null;
   product_count: number;
   created_at: number;
   updated_at: number;
@@ -68,6 +70,7 @@ export type CatalogProductUpdateRequest = Partial<CatalogProductCreateRequest>;
 export type CatalogCategoryCreateRequest = {
   name: string;
   sort_order?: number;
+  default_station_id?: string | null;
 };
 
 export type CatalogCategoryUpdateRequest = Partial<CatalogCategoryCreateRequest>;

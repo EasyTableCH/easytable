@@ -16,6 +16,7 @@ export function getDrizzleDatabase() {
     const sqliteClient = getSqliteClient();
     db = drizzle(sqliteClient, { schema });
     migrate(db, { migrationsFolder: resolveLocalMasterPath("drizzle") });
+    migrateLocalMasterSchema(sqliteClient);
   }
 
   return db;
@@ -39,4 +40,14 @@ function getSqliteClient() {
 
 function resolveLocalMasterPath(...segments: string[]) {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", ...segments);
+}
+
+function migrateLocalMasterSchema(sqliteClient: Database.Database) {
+  const categoryColumns = sqliteClient
+    .prepare("PRAGMA table_info(catalog_categories)")
+    .all() as Array<{ name: string }>;
+
+  if (!categoryColumns.some((column) => column.name === "default_station_id")) {
+    sqliteClient.prepare("ALTER TABLE catalog_categories ADD COLUMN default_station_id TEXT REFERENCES catalog_output_stations(id) ON DELETE SET NULL").run();
+  }
 }
