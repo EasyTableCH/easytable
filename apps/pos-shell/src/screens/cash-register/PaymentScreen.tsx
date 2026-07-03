@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, BanknoteIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, BanknoteIcon, CreditCardIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
@@ -12,6 +12,7 @@ import type { MockPaymentMethod, MockPaymentRequest } from "../../lib/pos-types"
 type PaymentScreenProps = {
   total: number;
   isSubmitting: boolean;
+  isWalleeTerminalEnabled: boolean;
   onCancel: () => void;
   onSelectMethod: (payment: MockPaymentRequest) => void;
 };
@@ -28,6 +29,7 @@ const cashSuggestions = [
 export function PaymentScreen({
   total,
   isSubmitting,
+  isWalleeTerminalEnabled,
   onCancel,
   onSelectMethod,
 }: PaymentScreenProps) {
@@ -196,6 +198,14 @@ export function PaymentScreen({
             disabled={isSubmitting}
             onSelectMethod={handleMethodSelect}
           />
+          <PaymentMethodCard
+            method="WALLEE_TERMINAL"
+            title="WALLEE"
+            eyebrow="Terminal"
+            description={isWalleeTerminalEnabled ? "LTI vorbereitet" : "Nicht konfiguriert"}
+            disabled={isSubmitting || !isWalleeTerminalEnabled}
+            onSelectMethod={handleMethodSelect}
+          />
         </div>
       </section>
     </main>
@@ -245,6 +255,8 @@ function PaymentMethodCard({
             >
               {dark ? (
                 <img src={chipUrl} alt="" className="h-12 w-14 object-contain" />
+              ) : method === "WALLEE_TERMINAL" ? (
+                <CreditCardIcon className="size-9 text-indigo-600" />
               ) : (
                 <BanknoteIcon className="size-9 text-emerald-600" />
               )}

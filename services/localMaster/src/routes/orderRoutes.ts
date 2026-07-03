@@ -6,12 +6,14 @@ import {
   completeMockPayment,
   createOrder,
   createOrderSnapshot,
-  listOpenOrders
+  listOpenOrders,
+  startWalleeTerminalPayment
 } from "../store.js";
 import type {
   CompleteMockPaymentRequest,
   CreateOrderSnapshotRequest,
-  OrderDraft
+  OrderDraft,
+  StartWalleeTerminalPaymentRequest
 } from "../types.js";
 import type { PosRequestBody } from "./types.js";
 
@@ -60,12 +62,33 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { payment, table } = completeMockPayment(request.body.request);
 
-      broadcast("PAYMENT_COMPLETED", { payment });
+      broadcast("PAYMENT_UPDATED", { payment });
+      if (payment.lifecycle_state === "completed") {
+        broadcast("PAYMENT_COMPLETED", { payment });
+      }
       if (table) {
         broadcast("TABLE_UPDATED", { table });
       }
 
       return reply.code(201).send(payment);
+    }
+  );
+
+  app.post<{ Body: PosRequestBody<StartWalleeTerminalPaymentRequest> }>(
+    "/api/payments/wallee-terminal/start",
+    { schema: completeMockPaymentSchema },
+    async (request, reply) => {
+      const { payment, table } = startWalleeTerminalPayment(request.body.request);
+
+      broadcast("PAYMENT_UPDATED", { payment });
+      if (payment.lifecycle_state === "completed") {
+        broadcast("PAYMENT_COMPLETED", { payment });
+      }
+      if (table) {
+        broadcast("TABLE_UPDATED", { table });
+      }
+
+      return reply.code(payment.lifecycle_state === "completed" ? 201 : 202).send(payment);
     }
   );
 }

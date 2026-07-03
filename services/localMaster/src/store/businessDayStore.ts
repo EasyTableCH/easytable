@@ -21,7 +21,7 @@ export function getDayClosePreview(request: DayClosePreviewRequest): DayClosePre
   const window = businessDayWindow(request.business_date, request.business_day_cutover_time);
   const completedPayments = payments.filter(
     (payment) =>
-      payment.status === "COMPLETED" &&
+      isCompletedPayment(payment) &&
       payment.createdAt >= window.startMs &&
       payment.createdAt < window.endMs
   );
@@ -129,6 +129,10 @@ function buildProductSales(orders: PosOrderSnapshot[]): DayCloseProductSale[] {
   return Array.from(salesByProduct.values()).sort(
     (left, right) => right.total - left.total || left.product_name.localeCompare(right.product_name)
   );
+}
+
+function isCompletedPayment(payment: { status: string; lifecycleState?: string }) {
+  return payment.lifecycleState === "completed" || (!payment.lifecycleState && payment.status === "COMPLETED");
 }
 
 function currentBusinessDate(cutoverTime: string) {

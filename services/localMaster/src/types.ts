@@ -366,25 +366,54 @@ export type CreatedOrderSnapshot = {
   continued_existing_order: boolean;
 };
 
-export type MockPaymentMethod = "CASH" | "CARD_MANUAL";
+export type MockPaymentMethod = "CASH" | "CARD_MANUAL" | "WALLEE_TERMINAL";
+
+export type PaymentLifecycleState =
+  | "payment_started"
+  | "provider_authorized"
+  | "local_recorded"
+  | "receipt_queued"
+  | "completed"
+  | "failed"
+  | "reversal_required";
 
 export type CompleteMockPaymentRequest = CreateOrderSnapshotRequest & {
+  request_id: string;
   payment_method: MockPaymentMethod;
   received_cash?: number;
   change_given?: number;
   terminal_id?: string;
 };
 
+export type WalleeTerminalSimulatorOutcome = "APPROVED" | "DECLINED" | "CANCELLED" | "TIMEOUT";
+
+export type StartWalleeTerminalPaymentRequest = CreateOrderSnapshotRequest & {
+  request_id: string;
+  terminal_id?: string;
+  simulator_outcome?: WalleeTerminalSimulatorOutcome;
+};
+
 export type CompletedMockPayment = {
   order_id: string;
   order_number: string;
   payment_id: string;
+  request_id: string;
   payment_method: MockPaymentMethod | string;
   amount: number;
   received_cash: number | null;
   change_given: number | null;
   status: "COMPLETED" | string;
   paid_at: number;
+  terminal_id: string | null;
+  provider: string;
+  provider_transaction_id: string | null;
+  provider_status: string;
+  lifecycle_state: PaymentLifecycleState;
+  receipt_print_job_id: string | null;
+  failure_reason: string | null;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
 };
 
 
@@ -568,6 +597,7 @@ export type RealtimeEventType =
   | "KDS_TICKET_UPDATED"
   | "KDS_TICKETS_REBUILT"
   | "PAYMENT_COMPLETED"
+  | "PAYMENT_UPDATED"
   | "PRINT_JOB_CREATED"
   | "PRINT_JOB_UPDATED"
   | "PRINT_LOG_CREATED"

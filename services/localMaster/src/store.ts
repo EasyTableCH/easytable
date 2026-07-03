@@ -9,7 +9,8 @@ export {
   createOrder,
   createOrderSnapshot,
   getOpenTableOrderBasket,
-  listOpenOrders
+  listOpenOrders,
+  startWalleeTerminalPayment
 } from "./store/orderStore.js";
 
 export {

@@ -24,6 +24,7 @@ import type {
   TableLayout,
   TerminalPairingConfig,
   TerminalRecord,
+  WalleeTerminalPaymentRequest,
 } from "./pos-types";
 
 export type LocalMasterEvent = {
@@ -242,6 +243,10 @@ export function completeMockPayment(
   } & MockPaymentRequest,
 ) {
   return writeJson<CompletedMockPayment>("/api/mock-payments/complete", { request });
+}
+
+export function startWalleeTerminalPayment(request: WalleeTerminalPaymentRequest) {
+  return writeJson<CompletedMockPayment>("/api/payments/wallee-terminal/start", { request });
 }
 
 export function loadPosSettings() {

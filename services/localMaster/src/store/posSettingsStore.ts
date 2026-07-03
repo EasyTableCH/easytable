@@ -16,9 +16,9 @@ const posSettings: PosSettingsFile = {
       device_id: null
     },
     payment_terminal: {
-      enabled: false,
-      provider: "none",
-      device_id: null
+      enabled: true,
+      provider: "wallee_lti_simulator",
+      device_id: "wallee_lti_simulator"
     }
   }
 };

@@ -15,8 +15,10 @@ import {
   createOrderSnapshot,
   getStoredTerminalConfig,
   loadOpenTableOrderBasket,
+  loadPosSettings,
   loadProductVariantGroups,
   loadProducts as loadCatalogProducts,
+  startWalleeTerminalPayment,
   subscribeLocalMasterEvents,
 } from "../lib/local-master-client";
 import { formatChf } from "../lib/money";
@@ -29,6 +31,7 @@ import type {
   ProductVariantGroup,
   ProductVariantGroupItem,
   LocationServiceMode,
+  PosSettingsFile,
   TableContext,
 } from "../lib/pos-types";
 import { BasketPanel } from "./cash-register/BasketPanel";
@@ -107,6 +110,7 @@ export function CashRegisterScreen({
   const [isCompletingPayment, setIsCompletingPayment] = useState(false);
   const [isPaymentScreenOpen, setIsPaymentScreenOpen] = useState(false);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
+  const [settingsFile, setSettingsFile] = useState<PosSettingsFile | null>(null);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -122,10 +126,14 @@ export function CashRegisterScreen({
 
     async function loadInitialProducts() {
       try {
-        const databaseProducts = await loadCatalogProducts();
+        const [databaseProducts, loadedSettings] = await Promise.all([
+          loadCatalogProducts(),
+          loadPosSettings(),
+        ]);
 
         if (isMounted) {
           setProducts(databaseProducts);
+          setSettingsFile(loadedSettings);
         }
       } catch (error) {
         console.warn("Could not load products from Local Master.", error);
@@ -224,6 +232,10 @@ export function CashRegisterScreen({
   const drawerUnitTotal = selectedProduct
     ? selectedProduct.price + selectedVariantTotal
     : 0;
+  const isWalleeTerminalEnabled =
+    settingsFile?.settings.payment_terminal.enabled === true &&
+    (settingsFile.settings.payment_terminal.provider === "wallee_lti" ||
+      settingsFile.settings.payment_terminal.provider === "wallee_lti_simulator");
 
   async function handleProductPress(product: ProductCard) {
     try {
@@ -443,12 +455,23 @@ export function CashRegisterScreen({
     setOrderNotice(null);
 
     try {
-      const payment = await completeMockPayment({
-        lines: basketLines,
-        table_context: tableContext,
-        terminal_id: getStoredTerminalConfig()?.terminalId ?? "pos-shell",
-        ...paymentRequest,
-      });
+      const requestId = createPaymentRequestId();
+      const terminalId = getStoredTerminalConfig()?.terminalId ?? "pos-shell";
+      const payment =
+        paymentRequest.payment_method === "WALLEE_TERMINAL"
+          ? await startWalleeTerminalPayment({
+            lines: basketLines,
+            table_context: tableContext,
+            request_id: requestId,
+            terminal_id: terminalId,
+          })
+          : await completeMockPayment({
+            lines: basketLines,
+            table_context: tableContext,
+            request_id: requestId,
+            terminal_id: terminalId,
+            ...paymentRequest,
+          });
 
       setBasketLines([]);
       setIsPaymentScreenOpen(false);
@@ -474,6 +497,7 @@ export function CashRegisterScreen({
       <PaymentScreen
         total={basketTotal}
         isSubmitting={isCompletingPayment}
+        isWalleeTerminalEnabled={isWalleeTerminalEnabled}
         onCancel={() => setIsPaymentScreenOpen(false)}
         onSelectMethod={(payment) => void handleCompleteMockPayment(payment)}
       />
@@ -691,6 +715,14 @@ export function CashRegisterScreen({
       />
     </main>
   );
+}
+
+function createPaymentRequestId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return "payreq_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
 }
 
 

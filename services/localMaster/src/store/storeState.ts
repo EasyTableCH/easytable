@@ -15,13 +15,35 @@ import type {
   TableContext
 } from "../types.js";
 
+export type PaymentLifecycleState =
+  | "payment_started"
+  | "provider_authorized"
+  | "local_recorded"
+  | "receipt_queued"
+  | "completed"
+  | "failed"
+  | "reversal_required";
+
 export type LocalPayment = {
   id: string;
+  requestId?: string;
   orderId: string;
+  orderNumber?: string;
+  terminalId?: string | null;
   amount: number;
+  receivedCash?: number | null;
+  changeGiven?: number | null;
   method: string;
-  status: "COMPLETED";
+  status: "COMPLETED" | "FAILED" | string;
+  provider?: string;
+  providerTransactionId?: string | null;
+  providerStatus?: string;
+  lifecycleState?: PaymentLifecycleState;
+  receiptPrintJobId?: string | null;
+  failureReason?: string | null;
   createdAt: number;
+  updatedAt?: number;
+  completedAt?: number | null;
 };
 
 export type StoredDayClose = SavedDayClose & {
