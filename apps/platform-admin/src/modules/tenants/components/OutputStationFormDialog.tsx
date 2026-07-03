@@ -45,7 +45,8 @@ export function OutputStationFormDialog({ station, mode, disabled = false, onSub
     try {
       await onSubmit({
         name: form.name.trim(),
-        kind: form.kind,
+        has_kds: form.has_kds,
+        has_printer: form.has_printer,
         is_active: form.is_active,
         sort_order: Number(form.sort_order),
       });
@@ -75,20 +76,15 @@ export function OutputStationFormDialog({ station, mode, disabled = false, onSub
               <span className="text-sm font-medium">Name</span>
               <Input onChange={(event) => setForm({ ...form, name: event.target.value })} required value={form.name} />
             </label>
-            <label className="grid gap-1.5">
-              <span className="text-sm font-medium">Typ</span>
-              <select
-                className="h-9 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                onChange={(event) => setForm({ ...form, kind: event.target.value as OutputStationInput["kind"] })}
-                value={form.kind}
-              >
-                <option value="KDS_AND_PRINTER">KDS + Bon</option>
-                <option value="KDS">Nur KDS</option>
-                <option value="PRINTER">Nur Bon</option>
-                <option value="NONE">Keine Ausgabe</option>
-              </select>
+            <label className="flex items-center justify-between rounded-md border p-3">
+              <span className="text-sm font-medium">KDS</span>
+              <Switch checked={form.has_kds} onCheckedChange={(checked) => setForm({ ...form, has_kds: checked })} />
             </label>
           </div>
+          <label className="flex items-center justify-between rounded-md border p-3">
+            <span className="text-sm font-medium">Bondrucker</span>
+            <Switch checked={form.has_printer} onCheckedChange={(checked) => setForm({ ...form, has_printer: checked })} />
+          </label>
           <label className="grid gap-1.5">
             <span className="text-sm font-medium">Sortierung</span>
             <Input min="0" onChange={(event) => setForm({ ...form, sort_order: event.target.value })} required type="number" value={form.sort_order} />

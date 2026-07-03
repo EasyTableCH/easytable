@@ -6,7 +6,7 @@ import {
   ListIcon,
   ShoppingBasketIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Drawer,
   DrawerContent,
@@ -22,6 +22,7 @@ import {
   loadOpenTableOrderBasket,
   loadProducts,
   loadProductVariantGroups,
+  subscribeLocalMasterEvents,
   type BasketLine,
   type BasketLineVariant,
   type ProductVariantGroup,
@@ -65,10 +66,19 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   const [basketOpen, setBasketOpen] = useState(false);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
 
+  const loadCatalogProducts = useCallback(async () => {
+    try {
+      const databaseProducts = await loadProducts();
+      setProducts(databaseProducts.filter((product) => product.is_available));
+    } catch (error) {
+      console.warn("Could not load products from Local Master.", error);
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
-    async function loadCatalogProducts() {
+    async function loadInitialCatalogProducts() {
       try {
         const databaseProducts = await loadProducts();
 
@@ -80,12 +90,20 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
       }
     }
 
-    void loadCatalogProducts();
+    void loadInitialCatalogProducts();
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    return subscribeLocalMasterEvents((event) => {
+      if (event.type === "CATALOG_UPDATED") {
+        void loadCatalogProducts();
+      }
+    });
+  }, [loadCatalogProducts]);
 
   useEffect(() => {
     let isMounted = true;

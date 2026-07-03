@@ -1,4 +1,6 @@
 ALTER TABLE "catalog_output_stations" ADD COLUMN "location_id" text;--> statement-breakpoint
+ALTER TABLE "catalog_output_stations" ADD COLUMN "has_kds" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog_output_stations" ADD COLUMN "has_printer" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "catalog_output_stations" ADD CONSTRAINT "catalog_output_stations_location_id_locations_id_fk" FOREIGN KEY ("location_id") REFERENCES "public"."locations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_catalog_output_stations_location" ON "catalog_output_stations" USING btree ("tenant_id","location_id","is_active","sort_order");
 --> statement-breakpoint
@@ -19,16 +21,18 @@ ON CONFLICT ("id") DO UPDATE SET
   "status" = EXCLUDED."status",
   "updated_at" = now();
 --> statement-breakpoint
-INSERT INTO "catalog_output_stations" ("id", "tenant_id", "location_id", "name", "kind", "is_active", "sort_order")
+INSERT INTO "catalog_output_stations" ("id", "tenant_id", "location_id", "name", "kind", "has_kds", "has_printer", "is_active", "sort_order")
 VALUES
-  ('station_shisha', 'tenant_basilica', 'loc_basilica_main', 'Shisha', 'KDS_AND_PRINTER', 1, 10),
-  ('station_bar', 'tenant_basilica', 'loc_basilica_main', 'Bar', 'KDS_AND_PRINTER', 1, 20),
-  ('station_snack', 'tenant_basilica', 'loc_basilica_main', 'Snack', 'KDS_AND_PRINTER', 1, 30)
+  ('station_shisha', 'tenant_basilica', 'loc_basilica_main', 'Shisha', 'KDS_AND_PRINTER', 1, 1, 1, 10),
+  ('station_bar', 'tenant_basilica', 'loc_basilica_main', 'Bar', 'KDS_AND_PRINTER', 1, 1, 1, 20),
+  ('station_snack', 'tenant_basilica', 'loc_basilica_main', 'Snack', 'KDS_AND_PRINTER', 1, 1, 1, 30)
 ON CONFLICT ("id") DO UPDATE SET
   "tenant_id" = EXCLUDED."tenant_id",
   "location_id" = EXCLUDED."location_id",
   "name" = EXCLUDED."name",
   "kind" = EXCLUDED."kind",
+  "has_kds" = EXCLUDED."has_kds",
+  "has_printer" = EXCLUDED."has_printer",
   "is_active" = EXCLUDED."is_active",
   "sort_order" = EXCLUDED."sort_order",
   "updated_at" = now();

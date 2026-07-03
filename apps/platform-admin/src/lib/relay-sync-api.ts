@@ -43,14 +43,13 @@ export type LocationInput = {
   status: LocationStatus;
 };
 
-export type OutputStationKind = "KDS_AND_PRINTER" | "KDS" | "PRINTER" | "NONE";
-
 export type OutputStation = {
   id: string;
   tenant_id: string;
   location_id: string | null;
   name: string;
-  kind: OutputStationKind;
+  has_kds: boolean;
+  has_printer: boolean;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -59,7 +58,8 @@ export type OutputStation = {
 
 export type OutputStationInput = {
   name: string;
-  kind: OutputStationKind;
+  has_kds: boolean;
+  has_printer: boolean;
   is_active: boolean;
   sort_order: number;
 };

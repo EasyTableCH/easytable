@@ -5,7 +5,6 @@ import { Button } from "@easytable/ui/components/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@easytable/ui/components/table";
 
 import type { Location, OutputStation, OutputStationInput, Tenant } from "../../../lib/relay-sync-api";
-import { formatStationKind } from "../utils";
 import { OutputStationFormDialog } from "./OutputStationFormDialog";
 
 type OutputStationsSectionProps = {
@@ -45,7 +44,7 @@ export function OutputStationsSection({ tenant, location, stations, isLoading, o
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Typ</TableHead>
+                <TableHead>Fähigkeiten</TableHead>
                 <TableHead className="text-right">Sortierung</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-24 text-right">Aktionen</TableHead>
@@ -61,7 +60,11 @@ export function OutputStationsSection({ tenant, location, stations, isLoading, o
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{formatStationKind(station.kind)}</Badge>
+                    <div className="flex flex-wrap gap-1">
+                      {station.has_kds ? <Badge variant="outline">KDS</Badge> : null}
+                      {station.has_printer ? <Badge variant="outline">Bon</Badge> : null}
+                      {!station.has_kds && !station.has_printer ? <Badge variant="outline">Keine Ausgabe</Badge> : null}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{station.sort_order}</TableCell>
                   <TableCell>

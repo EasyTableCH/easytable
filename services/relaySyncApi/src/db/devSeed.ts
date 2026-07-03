@@ -15,19 +15,21 @@ export async function seedRelaySyncDevData(database: NodePgDatabase<typeof schem
         AND lower(locations.slug) = 'hauptstandort'
     ),
     seed_stations AS (
-      SELECT tenant_id, location_id, 'shisha' AS station_key, 'Shisha' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS is_active, 10 AS sort_order FROM dev_locations
+      SELECT tenant_id, location_id, 'shisha' AS station_key, 'Shisha' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS has_kds, 1 AS has_printer, 1 AS is_active, 10 AS sort_order FROM dev_locations
       UNION ALL
-      SELECT tenant_id, location_id, 'bar' AS station_key, 'Bar' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS is_active, 20 AS sort_order FROM dev_locations
+      SELECT tenant_id, location_id, 'bar' AS station_key, 'Bar' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS has_kds, 1 AS has_printer, 1 AS is_active, 20 AS sort_order FROM dev_locations
       UNION ALL
-      SELECT tenant_id, location_id, 'snack' AS station_key, 'Snack' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS is_active, 30 AS sort_order FROM dev_locations
+      SELECT tenant_id, location_id, 'snack' AS station_key, 'Snack' AS name, 'KDS_AND_PRINTER' AS kind, 1 AS has_kds, 1 AS has_printer, 1 AS is_active, 30 AS sort_order FROM dev_locations
     )
-    INSERT INTO catalog_output_stations (id, tenant_id, location_id, name, kind, is_active, sort_order)
+    INSERT INTO catalog_output_stations (id, tenant_id, location_id, name, kind, has_kds, has_printer, is_active, sort_order)
     SELECT
       'station_' || replace(location_id, '-', '_') || '_' || station_key,
       tenant_id,
       location_id,
       name,
       kind,
+      has_kds,
+      has_printer,
       is_active,
       sort_order
     FROM seed_stations
@@ -36,6 +38,8 @@ export async function seedRelaySyncDevData(database: NodePgDatabase<typeof schem
       location_id = EXCLUDED.location_id,
       name = EXCLUDED.name,
       kind = EXCLUDED.kind,
+      has_kds = EXCLUDED.has_kds,
+      has_printer = EXCLUDED.has_printer,
       is_active = EXCLUDED.is_active,
       sort_order = EXCLUDED.sort_order,
       updated_at = now()

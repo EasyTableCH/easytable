@@ -1,16 +1,25 @@
 import type {
   BasketLine,
+  CatalogOutputStation,
   CompletedMockPayment,
   DayClosePreview,
   CreatedOrderSnapshot,
+  LocalDevice,
+  LocalDeviceInput,
   LocalMasterIdentity,
   MockPaymentRequest,
+  PosDeviceBinding,
+  PosDeviceBindingUpdateRequest,
   PosSettingsFile,
+  PrintJob,
+  PrintLog,
   OpenTableOrderBasket,
   PairingSession,
   PosProduct,
   ProductVariantGroup,
   SavedDayClose,
+  StationDeviceBinding,
+  StationDeviceBindingUpdateRequest,
   TableContext,
   TableLayout,
   TerminalPairingConfig,
@@ -179,9 +188,14 @@ async function writeJson<T>(path: string, body: unknown): Promise<T> {
   return writeJsonFrom<T>(getLocalMasterUrl(), path, body);
 }
 
-async function writeJsonFrom<T>(baseUrl: string, path: string, body: unknown): Promise<T> {
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  assertLocalMasterAllowed();
+  return writeJsonFrom<T>(getLocalMasterUrl(), path, body, "PATCH");
+}
+
+async function writeJsonFrom<T>(baseUrl: string, path: string, body: unknown, method = "POST"): Promise<T> {
   const response = await fetch(normalizeBaseUrl(baseUrl) + path, {
-    method: "POST",
+    method,
     headers: {
       "Content-Type": "application/json",
     },
@@ -234,6 +248,61 @@ export function loadPosSettings() {
   return readJson<PosSettingsFile>("/api/pos-settings");
 }
 
+export function loadOutputStations() {
+  return readJson<CatalogOutputStation[]>("/api/catalog/output-stations");
+}
+
+export function loadLocalDevices() {
+  return readJson<LocalDevice[]>("/api/local-devices");
+}
+
+export function createLocalDevice(request: LocalDeviceInput) {
+  return writeJson<LocalDevice>("/api/local-devices", { request });
+}
+
+export function updateLocalDevice(deviceId: string, request: Partial<LocalDeviceInput>) {
+  return patchJson<LocalDevice>("/api/local-devices/" + encodeURIComponent(deviceId), { request });
+}
+
+export function testLocalDevice(deviceId: string) {
+  return writeJson<{ ok: true; message: string; print_log?: PrintLog }>("/api/local-devices/" + encodeURIComponent(deviceId) + "/test", { request: {} });
+}
+
+export function loadPrintLogs() {
+  return readJson<PrintLog[]>("/api/print-logs");
+}
+
+export function loadPrintJobs() {
+  return readJson<PrintJob[]>("/api/print-jobs");
+}
+
+export function retryPrintJob(jobId: string) {
+  return writeJson<PrintJob>("/api/print-jobs/" + encodeURIComponent(jobId) + "/retry", { request: {} });
+}
+
+export function clearPrintLogs() {
+  return writeJson<{ ok: true }>("/api/print-logs/clear", { request: {} });
+}
+
+export function loadPosDeviceBinding(terminalId: string) {
+  return readJson<PosDeviceBinding>("/api/pos-device-bindings/" + encodeURIComponent(terminalId));
+}
+
+export function updatePosDeviceBinding(terminalId: string, request: PosDeviceBindingUpdateRequest) {
+  return writeJson<PosDeviceBinding>("/api/pos-device-bindings/" + encodeURIComponent(terminalId), { request });
+}
+
+export function loadStationDeviceBindings() {
+  return readJson<StationDeviceBinding[]>("/api/station-device-bindings");
+}
+
+export function updateStationDeviceBinding(stationId: string, request: StationDeviceBindingUpdateRequest) {
+  return writeJson<StationDeviceBinding>(
+    "/api/station-device-bindings/" + encodeURIComponent(stationId),
+    { request },
+  );
+}
+
 export function loadCurrentBusinessDate(request: {
   business_day_cutover_time: string;
 }) {
@@ -251,6 +320,7 @@ export function saveDayClose(request: {
   business_date: string;
   business_day_cutover_time: string;
   counted_cash: number;
+  terminal_id?: string;
 }) {
   return writeJson<SavedDayClose>("/api/day-close", { request });
 }

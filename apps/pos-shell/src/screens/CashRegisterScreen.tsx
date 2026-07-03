@@ -7,15 +7,17 @@
   ListIcon,
   ShoppingBagIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PosScreen } from "../App";
 import {
   completeMockPayment,
   createOrderSnapshot,
+  getStoredTerminalConfig,
   loadOpenTableOrderBasket,
   loadProductVariantGroups,
   loadProducts as loadCatalogProducts,
+  subscribeLocalMasterEvents,
 } from "../lib/local-master-client";
 import { formatChf } from "../lib/money";
 import type {
@@ -102,10 +104,19 @@ export function CashRegisterScreen({
   const [isPaymentScreenOpen, setIsPaymentScreenOpen] = useState(false);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
 
+  const loadProducts = useCallback(async () => {
+    try {
+      const databaseProducts = await loadCatalogProducts();
+      setProducts(databaseProducts);
+    } catch (error) {
+      console.warn("Could not load products from Local Master.", error);
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
-    async function loadProducts() {
+    async function loadInitialProducts() {
       try {
         const databaseProducts = await loadCatalogProducts();
 
@@ -117,12 +128,20 @@ export function CashRegisterScreen({
       }
     }
 
-    void loadProducts();
+    void loadInitialProducts();
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    return subscribeLocalMasterEvents((event) => {
+      if (event.type === "CATALOG_UPDATED") {
+        void loadProducts();
+      }
+    });
+  }, [loadProducts]);
 
   useEffect(() => {
     let isMounted = true;
@@ -419,6 +438,7 @@ export function CashRegisterScreen({
       const payment = await completeMockPayment({
         lines: basketLines,
         table_context: tableContext,
+        terminal_id: getStoredTerminalConfig()?.terminalId ?? "pos-shell",
         ...paymentRequest,
       });
 

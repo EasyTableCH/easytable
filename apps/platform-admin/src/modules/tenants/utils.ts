@@ -1,4 +1,4 @@
-import type { Location, LocationInput, OutputStation, OutputStationInput, Tenant, TenantInput } from "../../lib/relay-sync-api";
+import type { Location, LocationInput, OutputStation, Tenant, TenantInput } from "../../lib/relay-sync-api";
 
 export type TenantFormState = {
   name: string;
@@ -19,7 +19,8 @@ export type LocationFormState = {
 
 export type OutputStationFormState = {
   name: string;
-  kind: OutputStationInput["kind"];
+  has_kds: boolean;
+  has_printer: boolean;
   is_active: boolean;
   sort_order: string;
 };
@@ -48,7 +49,8 @@ export function createLocationFormState(location?: Location): LocationFormState 
 export function createOutputStationFormState(station?: OutputStation): OutputStationFormState {
   return {
     name: station?.name ?? "",
-    kind: station?.kind ?? "KDS_AND_PRINTER",
+    has_kds: station?.has_kds ?? true,
+    has_printer: station?.has_printer ?? true,
     is_active: station?.is_active ?? true,
     sort_order: String(station?.sort_order ?? 10),
   };
@@ -57,18 +59,6 @@ export function createOutputStationFormState(station?: OutputStation): OutputSta
 export function normalizeOptionalText(value: string) {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
-}
-
-export function formatStationKind(kind: OutputStation["kind"]) {
-  if (kind === "KDS_AND_PRINTER") {
-    return "KDS + Bon";
-  }
-
-  if (kind === "KDS") {
-    return "Nur KDS";
-  }
-
-  return kind === "PRINTER" ? "Nur Bon" : "Keine Ausgabe";
 }
 
 export function formatDate(value: string) {

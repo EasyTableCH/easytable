@@ -155,6 +155,8 @@ export const catalogOutputStations = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     name: text("name").notNull(),
     kind: text("kind").notNull(),
+    hasKds: integer("has_kds").notNull().default(0),
+    hasPrinter: integer("has_printer").notNull().default(0),
     isActive: integer("is_active").notNull(),
     sortOrder: integer("sort_order").notNull(),
     createdAt: integer("created_at").notNull(),

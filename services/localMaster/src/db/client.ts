@@ -50,4 +50,27 @@ function migrateLocalMasterSchema(sqliteClient: Database.Database) {
   if (!categoryColumns.some((column) => column.name === "default_station_id")) {
     sqliteClient.prepare("ALTER TABLE catalog_categories ADD COLUMN default_station_id TEXT REFERENCES catalog_output_stations(id) ON DELETE SET NULL").run();
   }
+
+  const stationColumns = sqliteClient
+    .prepare("PRAGMA table_info(catalog_output_stations)")
+    .all() as Array<{ name: string }>;
+
+  if (!stationColumns.some((column) => column.name === "has_kds")) {
+    sqliteClient.prepare("ALTER TABLE catalog_output_stations ADD COLUMN has_kds INTEGER NOT NULL DEFAULT 0").run();
+  }
+
+  if (!stationColumns.some((column) => column.name === "has_printer")) {
+    sqliteClient.prepare("ALTER TABLE catalog_output_stations ADD COLUMN has_printer INTEGER NOT NULL DEFAULT 0").run();
+  }
+
+  sqliteClient
+    .prepare(
+      "UPDATE catalog_output_stations SET has_kds = 1 WHERE kind IN ('KDS', 'KDS_AND_PRINTER') AND has_kds = 0"
+    )
+    .run();
+  sqliteClient
+    .prepare(
+      "UPDATE catalog_output_stations SET has_printer = 1 WHERE kind IN ('PRINTER', 'KDS_AND_PRINTER') AND has_printer = 0"
+    )
+    .run();
 }

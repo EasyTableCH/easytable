@@ -51,6 +51,98 @@ export type PosProduct = {
   station: string;
 };
 
+export type CatalogOutputStation = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  kind?: string;
+  has_kds: boolean;
+  has_printer: boolean;
+  is_active: boolean;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type LocalDeviceType = "PRINTER" | "KDS_DISPLAY";
+
+export type LocalDeviceProvider = "manual" | "windows" | "escpos" | "browser" | "simulator";
+
+export type LocalDevice = {
+  id: string;
+  name: string;
+  type: LocalDeviceType;
+  provider: LocalDeviceProvider;
+  address_or_device_id: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type LocalDeviceInput = {
+  name: string;
+  type: LocalDeviceType;
+  provider: LocalDeviceProvider;
+  address_or_device_id?: string | null;
+};
+
+export type StationDeviceBinding = {
+  station_id: string;
+  kds_device_id: string | null;
+  printer_device_id: string | null;
+  updated_at: number;
+};
+
+export type StationDeviceBindingUpdateRequest = {
+  kds_device_id?: string | null;
+  printer_device_id?: string | null;
+};
+
+export type PosDeviceBinding = {
+  terminal_id: string;
+  receipt_printer_device_id: string | null;
+  z_report_printer_device_id: string | null;
+  updated_at: number;
+};
+
+export type PosDeviceBindingUpdateRequest = {
+  receipt_printer_device_id?: string | null;
+  z_report_printer_device_id?: string | null;
+};
+
+export type PrintLogSource = "TEST" | "STATION" | "RECEIPT" | "Z_REPORT";
+
+export type PrintLog = {
+  id: string;
+  device_id: string;
+  device_name: string;
+  source: PrintLogSource;
+  title: string;
+  body: string;
+  created_at: number;
+};
+
+export type PrintJobStatus = "PENDING" | "PRINTING" | "PRINTED" | "SIMULATED" | "FAILED";
+
+export type PrintJob = {
+  id: string;
+  source: PrintLogSource;
+  device_id: string;
+  device_name: string;
+  status: PrintJobStatus;
+  title: string;
+  body: string;
+  error: string | null;
+  order_id: string | null;
+  order_number: string | null;
+  station_id: string | null;
+  station_name: string | null;
+  terminal_id: string | null;
+  attempt_count: number;
+  last_attempt_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+
 export type ProductVariantGroupItem = {
   id: string;
   variant_group_id: string;
@@ -124,6 +216,7 @@ export type MockPaymentRequest = {
   payment_method: MockPaymentMethod;
   received_cash?: number;
   change_given?: number;
+  terminal_id?: string;
 };
 
 export type CompletedMockPayment = {

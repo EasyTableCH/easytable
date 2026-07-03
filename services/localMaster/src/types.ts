@@ -28,11 +28,98 @@ export type CatalogOutputStation = {
   tenant_id: string;
   name: string;
   kind: CatalogOutputStationKind;
+  has_kds: boolean;
+  has_printer: boolean;
   is_active: boolean;
   sort_order: number;
   created_at: number;
   updated_at: number;
 };
+
+export type StationDeviceBinding = {
+  station_id: string;
+  kds_device_id: string | null;
+  printer_device_id: string | null;
+  updated_at: number;
+};
+
+export type StationDeviceBindingUpdateRequest = {
+  kds_device_id?: string | null;
+  printer_device_id?: string | null;
+};
+
+export type PosDeviceBinding = {
+  terminal_id: string;
+  receipt_printer_device_id: string | null;
+  z_report_printer_device_id: string | null;
+  updated_at: number;
+};
+
+export type PosDeviceBindingUpdateRequest = {
+  receipt_printer_device_id?: string | null;
+  z_report_printer_device_id?: string | null;
+};
+
+export type LocalDeviceType = "PRINTER" | "KDS_DISPLAY";
+
+export type LocalDeviceProvider = "manual" | "windows" | "escpos" | "browser" | "simulator";
+
+export type LocalDevice = {
+  id: string;
+  name: string;
+  type: LocalDeviceType;
+  provider: LocalDeviceProvider;
+  address_or_device_id: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type LocalDeviceCreateRequest = {
+  name: string;
+  type: LocalDeviceType;
+  provider: LocalDeviceProvider;
+  address_or_device_id?: string | null;
+};
+
+export type LocalDeviceUpdateRequest = Partial<LocalDeviceCreateRequest>;
+
+export type PrintLogSource = "TEST" | "STATION" | "RECEIPT" | "Z_REPORT";
+
+export type PrintLog = {
+  id: string;
+  device_id: string;
+  device_name: string;
+  source: PrintLogSource;
+  title: string;
+  body: string;
+  created_at: number;
+};
+
+export type PrintJobSource = "STATION" | "RECEIPT" | "Z_REPORT";
+
+export type PrintJobStatus = "PENDING" | "PRINTING" | "PRINTED" | "SIMULATED" | "FAILED";
+
+export type PrintJob = {
+  id: string;
+  source: PrintJobSource;
+  device_id: string;
+  device_name: string;
+  status: PrintJobStatus;
+  title: string;
+  body: string;
+  error: string | null;
+  order_id: string | null;
+  order_number: string | null;
+  station_id: string | null;
+  station_name: string | null;
+  terminal_id: string | null;
+  attempt_count: number;
+  last_attempt_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type StationPrintJob = PrintJob;
 
 export type CatalogCategory = {
   id: string;
@@ -285,6 +372,7 @@ export type CompleteMockPaymentRequest = CreateOrderSnapshotRequest & {
   payment_method: MockPaymentMethod;
   received_cash?: number;
   change_given?: number;
+  terminal_id?: string;
 };
 
 export type CompletedMockPayment = {
@@ -364,6 +452,7 @@ export type SaveDayCloseRequest = {
   business_date: string;
   business_day_cutover_time: string;
   counted_cash: number;
+  terminal_id?: string;
 };
 
 export type SavedDayClose = {
@@ -467,13 +556,18 @@ export type TerminalRecord = {
 export type RealtimeEventType =
   | "CONNECTED"
   | "DEVICE_CONNECTED"
+  | "DEVICE_CONFIG_UPDATED"
   | "DEVICE_DISCONNECTED"
   | "INVALID_MESSAGE"
+  | "CATALOG_UPDATED"
   | "ORDER_CREATED"
   | "KDS_TICKET_CREATED"
   | "KDS_TICKET_UPDATED"
   | "KDS_TICKETS_REBUILT"
   | "PAYMENT_COMPLETED"
+  | "PRINT_JOB_CREATED"
+  | "PRINT_JOB_UPDATED"
+  | "PRINT_LOG_CREATED"
   | "STATION_PICKUP_READY"
   | "STATION_PICKUP_ACKNOWLEDGED"
   | "TABLE_UPDATED";

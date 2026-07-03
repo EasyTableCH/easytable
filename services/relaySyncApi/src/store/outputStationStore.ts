@@ -7,7 +7,6 @@ import { catalogOutputStations, locations, tenants } from "../db/schema.js";
 import type {
   CatalogOutputStation,
   CatalogOutputStationCreateRequest,
-  CatalogOutputStationKind,
   CatalogOutputStationUpdateRequest
 } from "../types.js";
 import { ApiError } from "./errors.js";
@@ -43,7 +42,9 @@ export async function createOutputStation(
       tenantId,
       locationId,
       name: input.name,
-      kind: input.kind,
+      kind: kindFromCapabilities(input.has_kds, input.has_printer),
+      hasKds: input.has_kds ? 1 : 0,
+      hasPrinter: input.has_printer ? 1 : 0,
       isActive: input.is_active ? 1 : 0,
       sortOrder: input.sort_order,
       createdAt: now,
@@ -63,7 +64,8 @@ export async function updateOutputStation(
   const current = await requireOutputStation(tenantId, locationId, stationId);
   const input = normalizeOutputStationInput({
     name: request.name ?? current.name,
-    kind: request.kind ?? current.kind,
+    has_kds: request.has_kds ?? current.has_kds,
+    has_printer: request.has_printer ?? current.has_printer,
     is_active: request.is_active ?? current.is_active,
     sort_order: request.sort_order ?? current.sort_order
   });
@@ -76,7 +78,9 @@ export async function updateOutputStation(
     .update(catalogOutputStations)
     .set({
       name: input.name,
-      kind: input.kind,
+      kind: kindFromCapabilities(input.has_kds, input.has_printer),
+      hasKds: input.has_kds ? 1 : 0,
+      hasPrinter: input.has_printer ? 1 : 0,
       isActive: input.is_active ? 1 : 0,
       sortOrder: input.sort_order,
       updatedAt: new Date()
@@ -160,7 +164,8 @@ async function ensureUniqueStationName(tenantId: string, locationId: string, nam
 function normalizeOutputStationInput(request: CatalogOutputStationCreateRequest): Required<CatalogOutputStationCreateRequest> {
   return {
     name: normalizeName(request.name, "Output station name is required."),
-    kind: normalizeKind(request.kind),
+    has_kds: Boolean(request.has_kds),
+    has_printer: Boolean(request.has_printer),
     is_active: request.is_active ?? true,
     sort_order: normalizeSortOrder(request.sort_order ?? 10)
   };
@@ -172,14 +177,6 @@ function normalizeName(value: string | undefined, message: string) {
   return normalized;
 }
 
-function normalizeKind(value: string): CatalogOutputStationKind {
-  if (value !== "KDS_AND_PRINTER" && value !== "KDS" && value !== "PRINTER" && value !== "NONE") {
-    throw new ApiError("Output station kind must be KDS_AND_PRINTER, KDS, PRINTER, or NONE.");
-  }
-
-  return value;
-}
-
 function normalizeSortOrder(value: number) {
   if (!Number.isInteger(value) || value < 0) {
     throw new ApiError("Sort order must be a positive integer or zero.");
@@ -188,13 +185,21 @@ function normalizeSortOrder(value: number) {
   return value;
 }
 
+function kindFromCapabilities(hasKds: boolean, hasPrinter: boolean) {
+  if (hasKds && hasPrinter) return "KDS_AND_PRINTER";
+  if (hasKds) return "KDS";
+  if (hasPrinter) return "PRINTER";
+  return "NONE";
+}
+
 function toOutputStation(row: CatalogOutputStationRow): CatalogOutputStation {
   return {
     id: row.id,
     tenant_id: row.tenantId,
     location_id: row.locationId,
     name: row.name,
-    kind: row.kind as CatalogOutputStationKind,
+    has_kds: row.hasKds === 1,
+    has_printer: row.hasPrinter === 1,
     is_active: row.isActive === 1,
     sort_order: row.sortOrder,
     created_at: row.createdAt.toISOString(),

@@ -5,6 +5,7 @@ import { cn } from "@easytable/ui/lib/utils";
 
 import { TouchNumberPad } from "../components/TouchNumberPad";
 import {
+  getStoredTerminalConfig,
   loadCurrentBusinessDate,
   loadDayClosePreview,
   loadPosSettings,
@@ -136,10 +137,10 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
         business_date: businessDate,
         business_day_cutover_time: cutoverTime,
         counted_cash: countedCash,
+        terminal_id: getStoredTerminalConfig()?.terminalId ?? "pos-shell",
       });
 
       setNotice(`Kassenabschluss ${saved.business_date} wurde gespeichert.`);
-      // Future: trigger Z-Bon / Tagesabschluss receipt printing here once printer integration is wired.
       const refreshedPreview = await loadDayClosePreview({
         business_date: businessDate,
         business_day_cutover_time: cutoverTime,

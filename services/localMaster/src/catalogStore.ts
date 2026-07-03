@@ -74,6 +74,8 @@ type CatalogOutputStationRow = {
   tenantId: string;
   name: string;
   kind: string;
+  hasKds: number;
+  hasPrinter: number;
   isActive: number;
   sortOrder: number;
   createdAt: number;
@@ -498,6 +500,8 @@ function ensureOutputStationsSeeded() {
         tenantId: station.tenant_id,
         name: station.name,
         kind: station.kind,
+        hasKds: station.has_kds ? 1 : 0,
+        hasPrinter: station.has_printer ? 1 : 0,
         isActive: station.is_active ? 1 : 0,
         sortOrder: station.sort_order,
         createdAt: station.created_at || now,
@@ -554,7 +558,7 @@ function backfillProductTaxIds() {
 }
 
 function createSeedStation(id: string, name: string, kind: CatalogOutputStationKind, sortOrder: number): CatalogOutputStation {
-  return { id, tenant_id: tenantId, name, kind, is_active: true, sort_order: sortOrder, created_at: 0, updated_at: 0 };
+  return { id, tenant_id: tenantId, name, kind, has_kds: true, has_printer: true, is_active: true, sort_order: sortOrder, created_at: 0, updated_at: 0 };
 }
 
 function createSeedProduct(id: string, productType: PosProduct["product_type"], name: string, category: string, price: number, taxCodeId: string, taxCodeName: string, taxRateBps: number, stationId: string | null): PosProduct {
@@ -742,7 +746,7 @@ function toCatalogTax(row: CatalogTaxRow): CatalogTax {
 }
 
 function toCatalogOutputStation(row: CatalogOutputStationRow): CatalogOutputStation {
-  return { id: row.id, tenant_id: row.tenantId, name: row.name, kind: toOutputStationKind(row.kind), is_active: row.isActive === 1, sort_order: row.sortOrder, created_at: row.createdAt, updated_at: row.updatedAt };
+  return { id: row.id, tenant_id: row.tenantId, name: row.name, kind: toOutputStationKind(row.kind), has_kds: row.hasKds === 1, has_printer: row.hasPrinter === 1, is_active: row.isActive === 1, sort_order: row.sortOrder, created_at: row.createdAt, updated_at: row.updatedAt };
 }
 
 function toProductType(value: string): PosProduct["product_type"] {
