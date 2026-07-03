@@ -9,7 +9,7 @@ import {
 } from "./commandStore.js";
 import { rebuildKdsTicketsForOrder } from "./kdsStore.js";
 import { rebuildStationPrintJobsForOrder, enqueueReceiptPrintJob } from "./printStore.js";
-import { areas, layoutTables } from "./storeSeeds.js";
+import { areas, floors, layoutTables } from "./storeSeeds.js";
 import { startWalleeLtiPayment } from "./walleeLtiProvider.js";
 import {
   payments,
@@ -24,7 +24,7 @@ import {
   cloneBasketLines,
   scopedId
 } from "./storeHelpers.js";
-import { findOpenPosOrderForTable, tableFromContext } from "./tableStore.js";
+import { findOpenPosOrderForTable, findOpenStaffOrderForTable, tableFromContext } from "./tableStore.js";
 import type {
   BasketLine,
   CompleteMockPaymentRequest,
@@ -35,6 +35,7 @@ import type {
   OpenTableOrderBasket,
   Order,
   OrderDraft,
+  OrderItem,
   PrintJob,
   StartWalleeTerminalPaymentRequest,
   Table
@@ -65,7 +66,7 @@ export type PaymentResult = {
 
 export function listOpenOrders() {
   return [
-    ...staffOrders,
+    ...staffOrders.filter((order) => order.status === "OPEN"),
     ...posOrders.filter((order) => order.status === "OPEN" && order.payment_status === "UNPAID")
   ];
 }
@@ -73,14 +74,24 @@ export function listOpenOrders() {
 export function getOpenTableOrderBasket(tableId: string): OpenTableOrderBasket | null {
   const order = findOpenPosOrderForTable(tableId);
 
-  if (!order) {
+  if (order) {
+    return {
+      order_id: order.id,
+      order_number: order.order_number,
+      lines: cloneBasketLines(order.lines)
+    };
+  }
+
+  const staffOrder = findOpenStaffOrderForTable(tableId);
+
+  if (!staffOrder) {
     return null;
   }
 
   return {
-    order_id: order.id,
-    order_number: order.order_number,
-    lines: cloneBasketLines(order.lines)
+    order_id: staffOrder.id,
+    order_number: staffOrder.orderNumber,
+    lines: staffOrder.items.map(staffOrderItemToBasketLine)
   };
 }
 
@@ -137,16 +148,6 @@ export function completeMockPayment(request: CompleteMockPaymentRequest): Paymen
   validateMockPaymentRequest(request);
 
   const requestId = request.request_id.trim();
-  const existingPayment = payments.find((payment) => payment.requestId === requestId);
-
-  if (existingPayment) {
-    return {
-      payment: toCompletedMockPayment(existingPayment),
-      table: tableForPayment(existingPayment),
-      replayed: true
-    };
-  }
-
   const command = beginIdempotentCommand("PAYMENT_LOCAL_COMPLETE", requestId, {
     lines: request.lines,
     table_context: request.table_context,
@@ -190,7 +191,7 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
     request.change_given,
     requestTotal
   );
-  const savedOrder = request.table_context ? saveTableOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
+  const savedOrder = request.table_context ? saveTablePaymentOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
   const receivedCash = request.payment_method === "CASH" ? request.received_cash ?? null : null;
   const changeGiven = request.payment_method === "CASH" ? request.change_given ?? null : null;
   const terminalId = request.terminal_id?.trim() || null;
@@ -252,16 +253,6 @@ export function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRe
   validateWalleeTerminalPaymentRequest(request);
 
   const requestId = request.request_id.trim();
-  const existingPayment = payments.find((payment) => payment.requestId === requestId);
-
-  if (existingPayment) {
-    return {
-      payment: toCompletedMockPayment(existingPayment),
-      table: tableForPayment(existingPayment),
-      replayed: true
-    };
-  }
-
   const command = beginIdempotentCommand("PAYMENT_WALLEE_TERMINAL_START", requestId, {
     lines: request.lines,
     table_context: request.table_context,
@@ -328,7 +319,7 @@ function startWalleeTerminalPaymentUnchecked(
     };
   }
 
-  const savedOrder = request.table_context ? saveTableOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
+  const savedOrder = request.table_context ? saveTablePaymentOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
   const paymentRecord: LocalPayment = {
     id: scopedId("pay", now, 0),
     requestId,
@@ -410,11 +401,13 @@ export function createOrder(draft: OrderDraft): CreateOrderResult {
     deviceId: draft.deviceId,
     tableId: table.id,
     tableName: table.name,
+    locationId: locationIdForTable(table.id) ?? undefined,
     guestCount: draft.guestCount,
     status: "OPEN",
     total: items.reduce((sum, item) => sum + item.totalPrice, 0),
     items,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    closedAt: null
   };
 
   staffOrders.push(order);
@@ -442,7 +435,7 @@ function saveTableOrderSnapshot(
   }
 
   const totals = calculateOrderTotals(request.lines);
-  const existingOrder = findOpenPosOrderForTable(tableContext.table_id);
+  const existingOrder = findOpenPosOrderForTable(tableContext.table_id, tableContext.location_id);
 
   if (existingOrder) {
     existingOrder.table_context = tableContext;
@@ -475,6 +468,53 @@ function saveTableOrderSnapshot(
   persistPosOrders();
 
   return { order, continuedExistingOrder: false };
+}
+
+function saveTablePaymentOrderSnapshot(
+  request: CreateOrderSnapshotRequest,
+  now: number
+): { order: PosOrderSnapshot; continuedExistingOrder: boolean } {
+  const tableContext = request.table_context;
+
+  if (!tableContext) {
+    throw new Error("Cannot save a table payment without table context.");
+  }
+
+  const existingPosOrder = findOpenPosOrderForTable(tableContext.table_id, tableContext.location_id);
+
+  if (existingPosOrder) {
+    return saveTableOrderSnapshot(request, now);
+  }
+
+  const staffOrder = findOpenStaffOrderForTable(tableContext.table_id, tableContext.location_id);
+
+  if (!staffOrder) {
+    return saveTableOrderSnapshot(request, now);
+  }
+
+  const totals = calculateOrderTotals(request.lines);
+  const order: PosOrderSnapshot = {
+    id: staffOrder.id,
+    order_number: staffOrder.orderNumber,
+    table_context: tableContext,
+    lines: cloneBasketLines(request.lines),
+    subtotal: totals.subtotal,
+    tax_total: totals.taxTotal,
+    total: totals.total,
+    status: "CLOSED",
+    payment_status: "PAID",
+    created_at: staffOrder.createdAt,
+    updated_at: now,
+    closed_at: now
+  };
+
+  posOrders.push(order);
+  staffOrder.status = "CLOSED";
+  staffOrder.closedAt = now;
+  persistPosOrders();
+  persistStaffOrders();
+
+  return { order, continuedExistingOrder: true };
 }
 
 function saveCounterPaymentOrder(
@@ -561,6 +601,28 @@ function toCompletedMockPayment(payment: LocalPayment): CompletedMockPayment {
   };
 }
 
+function staffOrderItemToBasketLine(item: OrderItem): BasketLine {
+  const product = getProductById(item.productId);
+  const unitTotal = item.unitPrice;
+
+  return {
+    id: "staff_" + item.productId,
+    product_id: item.productId,
+    product_type: product?.product_type ?? "BASIC",
+    product_name: item.productName,
+    product_category: product?.category ?? "Staff",
+    base_price: item.unitPrice,
+    tax_code_id: product?.tax_code_id ?? "vat_81",
+    tax_code_name: product?.tax_code_name ?? "VAT 8.1%",
+    tax_rate_bps: product?.tax_rate_bps ?? 810,
+    station: product?.station_name ?? product?.station ?? "",
+    variants: [],
+    unit_total: unitTotal,
+    quantity: item.quantity,
+    line_total: item.totalPrice
+  };
+}
+
 function advancePaymentLifecycle(payment: LocalPayment, lifecycleState: PaymentLifecycleState) {
   const now = Date.now();
 
@@ -641,6 +703,14 @@ function calculateIncludedTax(grossAmount: number, taxRateBps: number) {
   }
 
   return Math.round((grossAmount * taxRateBps) / (10_000 + taxRateBps));
+}
+
+function locationIdForTable(tableId: string) {
+  const table = layoutTables.find((entry) => entry.id === tableId);
+  const area = table ? areas.find((entry) => entry.id === table.area_id) : undefined;
+  const floor = area ? floors.find((entry) => entry.id === area.floor_id) : undefined;
+
+  return floor?.location_id ?? null;
 }
 
 function validateOrderSnapshotRequest(request: CreateOrderSnapshotRequest) {

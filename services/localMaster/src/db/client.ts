@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import Database from "better-sqlite3";
@@ -27,7 +27,7 @@ function getSqliteClient() {
     return sqlite;
   }
 
-  const dbPath = process.env.LOCAL_MASTER_DB_PATH ?? resolveLocalMasterPath("data", "local-master.sqlite3");
+  const dbPath = resolveDatabasePath(process.env.LOCAL_MASTER_DB_PATH);
   mkdirSync(dirname(dbPath), { recursive: true });
 
   sqlite = new Database(dbPath);
@@ -40,6 +40,27 @@ function getSqliteClient() {
 
 function resolveLocalMasterPath(...segments: string[]) {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", ...segments);
+}
+
+function resolveRepositoryPath(...segments: string[]) {
+  return resolveLocalMasterPath("..", "..", ...segments);
+}
+
+function resolveDatabasePath(configuredPath: string | undefined) {
+  if (!configuredPath) {
+    return resolveLocalMasterPath("data", "local-master.sqlite3");
+  }
+
+  if (isAbsolute(configuredPath)) {
+    return configuredPath;
+  }
+
+  const normalizedPath = configuredPath.replace(/\\/g, "/");
+  if (normalizedPath === "services/localMaster" || normalizedPath.startsWith("services/localMaster/")) {
+    return resolveRepositoryPath(normalizedPath);
+  }
+
+  return resolveLocalMasterPath(configuredPath);
 }
 
 function migrateLocalMasterSchema(sqliteClient: Database.Database) {

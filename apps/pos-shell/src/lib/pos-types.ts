@@ -38,6 +38,20 @@ export type TerminalRecord = {
   paired_at: number;
   last_seen_at: number;
 };
+
+export type CloudBinding = {
+  status: "UNPAIRED" | "PAIRED" | "PAIRED_BOOTSTRAP_FAILED" | "INVALID";
+  tenant_id: string | null;
+  location_id: string | null;
+  local_master_instance_id: string | null;
+  relay_base_url: string | null;
+  paired_at: string | null;
+  last_verified_at: string | null;
+  invalid_reason: string | null;
+  bootstrap_completed_at: string | null;
+  bootstrap_error: string | null;
+  relay_token_present: boolean;
+};
 export type PosProduct = {
   id: string;
   product_type: "BASIC" | "SERVICE";

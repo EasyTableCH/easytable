@@ -1,6 +1,7 @@
 import type {
   BasketLine,
   CatalogOutputStation,
+  CloudBinding,
   CompletedMockPayment,
   CreateOrderSnapshotRequest,
   DayClosePreview,
@@ -124,6 +125,22 @@ export function getDefaultPairingUrl() {
 
 export function loadLocalMasterIdentity(baseUrl = getLocalMasterUrl()) {
   return readJsonFrom<LocalMasterIdentity>(baseUrl, "/api/local-master/identity");
+}
+
+export function loadCloudBinding(baseUrl = getLocalMasterUrl()) {
+  return readJsonFrom<CloudBinding>(baseUrl, "/api/local-master/cloud-binding");
+}
+
+export function pairCloudRelay(baseUrl: string, request: {
+  relay_base_url: string;
+  setup_code: string;
+  local_master_url?: string | null;
+}) {
+  return writeJsonFrom<CloudBinding>(baseUrl, "/api/local-master/cloud-pair", { request });
+}
+
+export function retryCloudBootstrap(baseUrl = getLocalMasterUrl()) {
+  return writeJsonFrom<CloudBinding>(baseUrl, "/api/local-master/cloud-bootstrap", { request: {} });
 }
 
 export function startPairingSession(request: { local_master_url?: string } = {}, baseUrl = getLocalMasterUrl()) {

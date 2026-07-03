@@ -198,6 +198,7 @@ function toOutputStation(row: CatalogOutputStationRow): CatalogOutputStation {
     tenant_id: row.tenantId,
     location_id: row.locationId,
     name: row.name,
+    kind: row.kind,
     has_kds: row.hasKds === 1,
     has_printer: row.hasPrinter === 1,
     is_active: row.isActive === 1,

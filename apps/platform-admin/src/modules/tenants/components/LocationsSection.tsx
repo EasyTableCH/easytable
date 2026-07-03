@@ -1,10 +1,10 @@
-import { RefreshCw } from "lucide-react";
+import { KeyRound, RefreshCw } from "lucide-react";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@easytable/ui/components/table";
 
-import type { Location, LocationInput, Tenant } from "../../../lib/relay-sync-api";
+import type { LocalMasterPairingSession, Location, LocationInput, Tenant } from "../../../lib/relay-sync-api";
 import { LocationFormDialog } from "./LocationFormDialog";
 
 type LocationsSectionProps = {
@@ -15,10 +15,23 @@ type LocationsSectionProps = {
   onReload: () => void;
   onCreate: (input: LocationInput) => Promise<void>;
   onUpdate: (locationId: string, input: LocationInput) => Promise<void>;
+  onCreatePairingSession: (locationId: string) => Promise<void>;
   onSelect: (locationId: string) => void;
+  pairingSessions: Record<string, LocalMasterPairingSession | undefined>;
 };
 
-export function LocationsSection({ tenant, selectedLocation, locations, isLoading, onReload, onCreate, onUpdate, onSelect }: LocationsSectionProps) {
+export function LocationsSection({
+  tenant,
+  selectedLocation,
+  locations,
+  isLoading,
+  onReload,
+  onCreate,
+  onUpdate,
+  onCreatePairingSession,
+  onSelect,
+  pairingSessions
+}: LocationsSectionProps) {
   return (
     <section className="rounded-md border bg-card text-card-foreground shadow-sm">
       <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -52,32 +65,63 @@ export function LocationsSection({ tenant, selectedLocation, locations, isLoadin
               </TableRow>
             </TableHeader>
             <TableBody>
-              {locations.map((location) => (
-                <TableRow className={location.id === selectedLocation?.id ? "bg-muted/50" : undefined} key={location.id} onClick={() => onSelect(location.id)}>
-                  <TableCell>
-                    <div className="grid gap-1">
-                      <span className="font-medium">{location.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{location.id}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{location.slug}</TableCell>
-                  <TableCell>{location.address ?? "Keine Adresse"}</TableCell>
-                  <TableCell className="font-mono text-xs">{location.local_master_instance_id ?? "Nicht gekoppelt"}</TableCell>
-                  <TableCell>
-                    <Badge variant={location.service_mode === "COUNTER_SERVICE" ? "default" : "outline"}>
-                      {location.service_mode === "COUNTER_SERVICE" ? "Counterbetrieb" : "Tischbetrieb"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={location.status === "ACTIVE" ? "secondary" : "outline"}>{location.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <LocationFormDialog location={location} mode="edit" onSubmit={(input) => onUpdate(location.id, input)} />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {locations.map((location) => {
+                const pairingSession = pairingSessions[location.id];
+                const hasActiveSetupCode = pairingSession?.status === "ACTIVE";
+
+                return (
+                  <TableRow className={location.id === selectedLocation?.id ? "bg-muted/50" : undefined} key={location.id} onClick={() => onSelect(location.id)}>
+                    <TableCell>
+                      <div className="grid gap-1">
+                        <span className="font-medium">{location.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{location.id}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{location.slug}</TableCell>
+                    <TableCell>{location.address ?? "Keine Adresse"}</TableCell>
+                    <TableCell>
+                      <div className="grid gap-1">
+                        <Badge className="w-fit" variant={location.local_master_instance_id ? "secondary" : hasActiveSetupCode ? "default" : "outline"}>
+                          {location.local_master_instance_id ? "Gekoppelt" : hasActiveSetupCode ? "Setup-Code aktiv" : "Nicht gekoppelt"}
+                        </Badge>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {location.local_master_instance_id ?? pairingSession?.setup_code ?? "Kein Setup-Code"}
+                        </span>
+                        {hasActiveSetupCode && pairingSession.expires_at ? (
+                          <span className="text-xs text-muted-foreground">bis {new Date(pairingSession.expires_at).toLocaleTimeString("de-CH")}</span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={location.service_mode === "COUNTER_SERVICE" ? "default" : "outline"}>
+                        {location.service_mode === "COUNTER_SERVICE" ? "Counterbetrieb" : "Tischbetrieb"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={location.status === "ACTIVE" ? "secondary" : "outline"}>{location.status}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          disabled={location.status !== "ACTIVE"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void onCreatePairingSession(location.id);
+                          }}
+                          size="icon-sm"
+                          title="Setup-Code erzeugen"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <KeyRound className="size-4" />
+                          <span className="sr-only">Setup-Code erzeugen</span>
+                        </Button>
+                        <LocationFormDialog location={location} mode="edit" onSubmit={(input) => onUpdate(location.id, input)} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
               {!isLoading && locations.length === 0 ? (
                 <TableRow>

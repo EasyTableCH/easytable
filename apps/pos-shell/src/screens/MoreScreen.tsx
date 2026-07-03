@@ -25,6 +25,7 @@ import {
   getLocalMasterBlockedReason,
   getStoredTerminalConfig,
   createLocalDevice,
+  loadCloudBinding,
   loadLocalDevices,
   loadLocalMasterIdentity,
   loadOutputStations,
@@ -33,7 +34,9 @@ import {
   loadPosSettings,
   loadPrintLogs,
   loadStationDeviceBindings,
+  pairCloudRelay,
   pairTerminal,
+  retryCloudBootstrap,
   retryPrintJob,
   sendTerminalHeartbeat,
   startPairingSession,
@@ -45,6 +48,7 @@ import {
 } from "../lib/local-master-client";
 import type {
   CatalogOutputStation,
+  CloudBinding,
   LocalDevice,
   LocalDeviceInput,
   LocalDeviceProvider,
@@ -233,7 +237,10 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
   const [endpoint, setEndpoint] = useState(getDefaultPairingUrl());
   const [terminalName, setTerminalName] = useState("Kasse 1");
   const [pairingCode, setPairingCode] = useState("");
+  const [relayBaseUrl, setRelayBaseUrl] = useState("http://localhost:3100");
+  const [setupCode, setSetupCode] = useState("");
   const [identity, setIdentity] = useState<LocalMasterIdentity | null>(null);
+  const [cloudBinding, setCloudBinding] = useState<CloudBinding | null>(null);
   const [pairingSession, setPairingSession] = useState<PairingSession | null>(null);
   const [terminalConfig, setTerminalConfig] = useState<TerminalPairingConfig | null>(getStoredTerminalConfig());
   const [status, setStatus] = useState(getLocalMasterBlockedReason() ?? "Bereit");
@@ -268,6 +275,12 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
 
   function updateTerminalConfig(config: TerminalPairingConfig | null) {
     setTerminalConfig(config);
+  }
+
+  async function refreshCloudBinding() {
+    const binding = await loadCloudBinding(endpoint);
+    setCloudBinding(binding);
+    return binding;
   }
 
   return (
@@ -325,6 +338,7 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
                   runAction(async () => {
                     const loadedIdentity = await loadLocalMasterIdentity(endpoint);
                     setIdentity(loadedIdentity);
+                    await refreshCloudBinding();
 
                     if (
                       terminalConfig &&
@@ -413,6 +427,83 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
                 {error}
               </p>
             ) : null}
+          </section>
+
+          <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-black uppercase text-slate-400">Standort in Betrieb nehmen</p>
+            <p className="mt-2 text-sm font-bold text-slate-500">
+              Setup-Code aus Platform Admin eingeben. POS ruft lokal den LocalMaster auf; Relay-Token bleibt im LocalMaster.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+              <label className="grid gap-1 text-xs font-black uppercase text-slate-400">
+                Relay URL
+                <input
+                  className="h-12 rounded-md border border-slate-200 px-3 text-base font-bold normal-case text-slate-950 outline-none focus:border-indigo-500"
+                  value={relayBaseUrl}
+                  onChange={(event) => setRelayBaseUrl(event.target.value)}
+                  placeholder="http://localhost:3100"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-black uppercase text-slate-400">
+                Setup-Code
+                <input
+                  className="h-12 rounded-md border border-slate-200 px-3 text-center text-xl font-black tracking-[0.2em] text-slate-950 outline-none focus:border-indigo-500"
+                  value={setupCode}
+                  onChange={(event) => setSetupCode(event.target.value)}
+                  placeholder="000000"
+                />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <Button
+                className="h-12 gap-2 rounded-md bg-indigo-700 font-black text-white hover:bg-indigo-800"
+                disabled={isBusy || setupCode.trim().length === 0}
+                onClick={() =>
+                  runAction(async () => {
+                    const binding = await pairCloudRelay(endpoint, {
+                      relay_base_url: relayBaseUrl,
+                      setup_code: setupCode,
+                      local_master_url: endpoint,
+                    });
+                    setCloudBinding(binding);
+                    setStatus(binding.status === "PAIRED" ? "Standort gekoppelt und Bootstrap abgeschlossen" : "Standort gekoppelt, Bootstrap pruefen");
+                  })
+                }
+              >
+                <LinkIcon className="size-4" />
+                Standort koppeln
+              </Button>
+              <Button
+                className="h-12 gap-2 rounded-md font-black"
+                disabled={isBusy}
+                onClick={() => runAction(async () => void (await refreshCloudBinding()))}
+                variant="outline"
+              >
+                <RefreshCwIcon className="size-4" />
+                Status
+              </Button>
+              <Button
+                className="h-12 gap-2 rounded-md font-black"
+                disabled={isBusy || !cloudBinding?.relay_token_present}
+                onClick={() =>
+                  runAction(async () => {
+                    const binding = await retryCloudBootstrap(endpoint);
+                    setCloudBinding(binding);
+                    setStatus("Bootstrap erneut ausgefuehrt");
+                  })
+                }
+                variant="outline"
+              >
+                <RefreshCwIcon className="size-4" />
+                Bootstrap
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
+              <StatusRow label="Cloud Status" value={cloudBinding?.status ?? "Nicht geladen"} />
+              <StatusRow label="Tenant" value={cloudBinding?.tenant_id ?? "-"} />
+              <StatusRow label="Location" value={cloudBinding?.location_id ?? "-"} />
+              <StatusRow label="Bootstrap" value={cloudBinding?.bootstrap_completed_at ?? cloudBinding?.bootstrap_error ?? "-"} />
+            </div>
           </section>
 
           <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">

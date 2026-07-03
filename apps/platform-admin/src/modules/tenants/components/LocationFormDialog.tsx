@@ -46,7 +46,6 @@ export function LocationFormDialog({ location, mode, disabled = false, onSubmit 
         name: form.name.trim(),
         slug: form.slug.trim(),
         address: normalizeOptionalText(form.address),
-        local_master_instance_id: normalizeOptionalText(form.local_master_instance_id),
         service_mode: form.service_mode,
         status: form.status,
       });
@@ -85,10 +84,12 @@ export function LocationFormDialog({ location, mode, disabled = false, onSubmit 
             <span className="text-sm font-medium">Adresse</span>
             <Input onChange={(event) => setForm({ ...form, address: event.target.value })} value={form.address} />
           </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium">LocalMaster Instance ID</span>
-            <Input onChange={(event) => setForm({ ...form, local_master_instance_id: event.target.value })} value={form.local_master_instance_id} />
-          </label>
+          {location?.local_master_instance_id ? (
+            <div className="grid gap-1.5 rounded-md border bg-muted/40 p-3">
+              <span className="text-sm font-medium">LocalMaster Instance ID</span>
+              <span className="font-mono text-xs text-muted-foreground">{location.local_master_instance_id}</span>
+            </div>
+          ) : null}
           <label className="grid gap-1.5">
             <span className="text-sm font-medium">Betriebsmodell</span>
             <select

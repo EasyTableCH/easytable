@@ -18,8 +18,10 @@
     "dev:relay-sync": "npm run dev -w services/relaySyncApi",
     "build:pos": "npm run build -w apps/pos-shell",
     "build:staff": "npm run build -w apps/staff",
+    "build:platform-admin": "npm run build -w apps/platform-admin",
     "build:master": "npm run build -w services/localMaster",
     "build:realtime": "npm run build:master",
-    "build:relay-sync": "npm run build -w services/relaySyncApi"
+    "build:relay-sync": "npm run build -w services/relaySyncApi",
+    "test:master": "npm run test -w services/localMaster"
   }
 }

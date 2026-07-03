@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { buildServer } from "./server.js";
 
 const port = Number(process.env.LOCAL_MASTER_PORT ?? process.env.LOCAL_REALTIME_PORT ?? 3000);

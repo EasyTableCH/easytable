@@ -1,4 +1,5 @@
 import { location, tenant } from "./storeSeeds.js";
+import { loadLocalSiteConfig } from "./localSiteStore.js";
 import type { PosSettingsFile } from "../types.js";
 
 const posSettings: PosSettingsFile = {
@@ -24,12 +25,20 @@ const posSettings: PosSettingsFile = {
 };
 
 export function loadPosSettings(): PosSettingsFile {
+  const siteConfig = loadLocalSiteConfig();
+  const baseSettings = {
+    ...posSettings.settings,
+    tenant_id: siteConfig.tenant.id,
+    location_id: siteConfig.location.id,
+    service_mode: siteConfig.service_mode
+  };
+
   return {
     path: posSettings.path,
     settings: {
-      ...posSettings.settings,
-      receipt_printer: { ...posSettings.settings.receipt_printer },
-      payment_terminal: { ...posSettings.settings.payment_terminal }
+      ...baseSettings,
+      receipt_printer: { ...baseSettings.receipt_printer },
+      payment_terminal: { ...baseSettings.payment_terminal }
     }
   };
 }

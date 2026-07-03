@@ -4,6 +4,7 @@ import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 
 import { getDrizzleDatabase } from "./db/client.js";
 import { catalogCategories, catalogOutputStations, catalogProducts, catalogTaxes } from "./db/schema.js";
+import { loadLocalSiteConfig } from "./store/localSiteStore.js";
 import type {
   CatalogCategory,
   CatalogCategoryCreateRequest,
@@ -157,14 +158,53 @@ export function listCatalogTaxes(): CatalogTax[] {
 
 export function listCatalogOutputStations(): CatalogOutputStation[] {
   ensureCatalogSeeded();
+  const currentTenantId = loadLocalSiteConfig().tenant.id;
 
   return getDrizzleDatabase()
     .select()
     .from(catalogOutputStations)
-    .where(eq(catalogOutputStations.isActive, 1))
+    .where(and(eq(catalogOutputStations.tenantId, currentTenantId), eq(catalogOutputStations.isActive, 1)))
     .orderBy(asc(catalogOutputStations.sortOrder), asc(catalogOutputStations.name))
     .all()
     .map(toCatalogOutputStation);
+}
+
+export function applyBootstrapOutputStations(stations: CatalogOutputStation[]) {
+  const db = getDrizzleDatabase();
+  const now = Date.now();
+
+  db.transaction((tx) => {
+    for (const station of stations) {
+      const kind = normalizeStationKind(station);
+      tx.insert(catalogOutputStations)
+        .values({
+          id: station.id,
+          tenantId: station.tenant_id,
+          name: station.name,
+          kind,
+          hasKds: station.has_kds ? 1 : 0,
+          hasPrinter: station.has_printer ? 1 : 0,
+          isActive: station.is_active ? 1 : 0,
+          sortOrder: station.sort_order,
+          createdAt: toTimestamp(station.created_at, now),
+          updatedAt: now
+        })
+        .onConflictDoUpdate({
+          target: catalogOutputStations.id,
+          set: {
+            tenantId: station.tenant_id,
+            name: station.name,
+            kind,
+            hasKds: station.has_kds ? 1 : 0,
+            hasPrinter: station.has_printer ? 1 : 0,
+            isActive: station.is_active ? 1 : 0,
+            sortOrder: station.sort_order,
+            updatedAt: now
+          }
+        })
+        .run();
+    }
+  });
 }
 
 export function createCatalogProduct(request: CatalogProductCreateRequest): CatalogProduct {
@@ -559,6 +599,30 @@ function backfillProductTaxIds() {
 
 function createSeedStation(id: string, name: string, kind: CatalogOutputStationKind, sortOrder: number): CatalogOutputStation {
   return { id, tenant_id: tenantId, name, kind, has_kds: true, has_printer: true, is_active: true, sort_order: sortOrder, created_at: 0, updated_at: 0 };
+}
+
+function normalizeStationKind(station: CatalogOutputStation): CatalogOutputStationKind {
+  if (station.kind) {
+    return toOutputStationKind(station.kind);
+  }
+
+  if (station.has_kds && station.has_printer) return "KDS_AND_PRINTER";
+  if (station.has_kds) return "KDS";
+  if (station.has_printer) return "PRINTER";
+  return "NONE";
+}
+
+function toTimestamp(value: number | string | null | undefined, fallback: number) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
 }
 
 function createSeedProduct(id: string, productType: PosProduct["product_type"], name: string, category: string, price: number, taxCodeId: string, taxCodeName: string, taxRateBps: number, stationId: string | null): PosProduct {

@@ -41,9 +41,63 @@ export type LocationInput = {
   name: string;
   slug: string;
   address: string | null;
-  local_master_instance_id: string | null;
+  local_master_instance_id?: string | null;
   service_mode: LocationServiceMode;
   status: LocationStatus;
+};
+
+export type LocalMasterPairingSessionStatus = "ACTIVE" | "USED" | "EXPIRED" | "NONE";
+
+export type LocalMasterPairingSession = {
+  id: string;
+  tenant_id: string;
+  location_id: string;
+  setup_code: string | null;
+  status: LocalMasterPairingSessionStatus;
+  expires_at: string | null;
+  used_at: string | null;
+  local_master_instance_id: string | null;
+  local_master_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type TenantUserRole = "OWNER" | "MANAGER" | "STAFF" | "KDS" | "POS_OPERATOR";
+
+export type TenantLocationUser = {
+  user_id: string;
+  tenant_id: string;
+  location_id: string;
+  email: string;
+  display_name: string;
+  role: TenantUserRole;
+  status: "ACTIVE" | "INVITED" | "DISABLED";
+  has_password: boolean;
+  has_pin: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantLocationUserInput = {
+  email: string;
+  display_name: string;
+  role: TenantUserRole;
+  password?: string | null;
+  pin?: string | null;
+  status: "ACTIVE" | "INVITED" | "DISABLED";
+  is_active: boolean;
+};
+
+export type OnboardingStatus = {
+  tenant_id: string;
+  location_id: string;
+  tenant_ready: boolean;
+  location_ready: boolean;
+  output_station_count: number;
+  user_count: number;
+  pairing_status: LocalMasterPairingSessionStatus | "PAIRED";
+  local_master_instance_id: string | null;
 };
 
 export type OutputStation = {
@@ -51,6 +105,7 @@ export type OutputStation = {
   tenant_id: string;
   location_id: string | null;
   name: string;
+  kind?: string;
   has_kds: boolean;
   has_printer: boolean;
   is_active: boolean;
@@ -68,6 +123,7 @@ export type OutputStationInput = {
 };
 
 const configuredUrl = import.meta.env.VITE_RELAY_SYNC_API_URL as string | undefined;
+const configuredAdminToken = import.meta.env.VITE_RELAY_ADMIN_TOKEN as string | undefined;
 
 export function getRelaySyncApiUrl() {
   return (configuredUrl || "http://localhost:3100").replace(/\/$/, "");
@@ -101,10 +157,81 @@ export function updateLocation(tenantId: string, locationId: string, input: Part
   );
 }
 
+export function createLocalMasterPairingSession(tenantId: string, locationId: string) {
+  return writeJson<LocalMasterPairingSession>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/pairing-sessions",
+    "POST",
+    {},
+  );
+}
+
+export function loadCurrentLocalMasterPairingSession(tenantId: string, locationId: string) {
+  return readJson<LocalMasterPairingSession>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/pairing-sessions/current",
+    {
+      id: "",
+      tenant_id: tenantId,
+      location_id: locationId,
+      setup_code: null,
+      status: "NONE",
+      expires_at: null,
+      used_at: null,
+      local_master_instance_id: null,
+      local_master_url: null,
+      created_at: null,
+      updated_at: null,
+    },
+  );
+}
+
+export function loadOnboardingStatus(tenantId: string, locationId: string) {
+  return readJson<OnboardingStatus>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/onboarding-status",
+    {
+      tenant_id: tenantId,
+      location_id: locationId,
+      tenant_ready: false,
+      location_ready: false,
+      output_station_count: 0,
+      user_count: 0,
+      pairing_status: "NONE",
+      local_master_instance_id: null,
+    },
+  );
+}
+
 export function loadOutputStations(tenantId: string, locationId: string) {
   return readJson<OutputStation[]>(
     "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/output-stations",
     [],
+  );
+}
+
+export function loadLocationUsers(tenantId: string, locationId: string) {
+  return readJson<TenantLocationUser[]>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/users",
+    [],
+  );
+}
+
+export function createLocationUser(tenantId: string, locationId: string, input: TenantLocationUserInput) {
+  return writeJson<TenantLocationUser>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/users",
+    "POST",
+    input,
+  );
+}
+
+export function updateLocationUser(tenantId: string, locationId: string, userId: string, input: Partial<TenantLocationUserInput>) {
+  return writeJson<TenantLocationUser>(
+    "/api/admin/tenants/" +
+      encodeURIComponent(tenantId) +
+      "/locations/" +
+      encodeURIComponent(locationId) +
+      "/users/" +
+      encodeURIComponent(userId),
+    "PATCH",
+    input,
   );
 }
 
@@ -130,18 +257,31 @@ export function updateOutputStation(tenantId: string, locationId: string, statio
 }
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
-  const response = await fetch(`${getRelaySyncApiUrl()}${path}`);
+  const response = await fetch(`${getRelaySyncApiUrl()}${path}`, {
+    headers: createHeaders(),
+  });
   return parseJsonResponse(response, fallback);
 }
 
 async function writeJson<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
   const response = await fetch(`${getRelaySyncApiUrl()}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: createHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
 
   return parseJsonResponse(response, undefined as T);
+}
+
+function createHeaders(extra: Record<string, string> = {}) {
+  const headers: Record<string, string> = { ...extra };
+  const token = configuredAdminToken?.trim();
+
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+
+  return headers;
 }
 
 async function parseJsonResponse<T>(response: Response, fallback: T): Promise<T> {

@@ -1,0 +1,522 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import assert from "node:assert/strict";
+import { after, test } from "node:test";
+
+import type { FastifyInstance } from "fastify";
+import type {
+  BasketLine,
+  CompletedMockPayment,
+  CreatedOrderSnapshot,
+  DayClosePreview,
+  LocalDevice,
+  OpenTableOrderBasket,
+  Order,
+  PrintJob,
+  SavedDayClose,
+  TableContext
+} from "../types.js";
+import type { PosOrderSnapshot } from "../store/storeState.js";
+
+process.env.LOCAL_MASTER_DB_PATH = join(mkdtempSync(join(tmpdir(), "easytable-localmaster-test-")), "local-master.sqlite3");
+
+const { buildServer } = await import("../server.js");
+const {
+  payments,
+  persistPayments,
+  persistPosOrders,
+  persistStaffOrders,
+  posOrders,
+  staffOrders
+} = await import("../store/storeState.js");
+
+const app = await buildServer({ logger: false });
+
+after(async () => {
+  await app.close();
+});
+
+test("local cash payments are idempotent by request_id", async () => {
+  const request = paymentRequest("payment_replay_same", "CASH", {
+    received_cash: 1500,
+    change_given: 300
+  });
+
+  const first = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const second = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+
+  assert.equal(second.payment_id, first.payment_id);
+  assert.equal(second.order_id, first.order_id);
+  assert.equal(second.lifecycle_state, "completed");
+
+  const openOrders = await getOpenOrders();
+  assert.equal(openOrders.filter((order) => order.id === first.order_id).length, 0);
+});
+
+test("same payment request_id with a different payload is rejected", async () => {
+  const request = paymentRequest("payment_replay_conflict", "CARD_MANUAL");
+  const first = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const conflict = await app.inject({
+    method: "POST",
+    url: "/api/mock-payments/complete",
+    payload: {
+      request: {
+        ...request,
+        lines: [basketLine("conflict-line", 1300)]
+      }
+    }
+  });
+
+  assert.equal(conflict.statusCode, 500);
+  assert.equal(conflict.json<{ error: string }>().error, "Internal Server Error");
+
+  const matchingPayments = payments.filter((payment) => payment.requestId === request.request_id);
+  assert.equal(matchingPayments.length, 1);
+  assert.equal(matchingPayments[0]?.id, first.payment_id);
+});
+
+test("cash validation rejects insufficient received cash and wrong change", async () => {
+  const insufficient = await app.inject({
+    method: "POST",
+    url: "/api/mock-payments/complete",
+    payload: {
+      request: paymentRequest("payment_cash_insufficient", "CASH", {
+        received_cash: 1000,
+        change_given: 0
+      })
+    }
+  });
+  assert.equal(insufficient.statusCode, 500);
+  assert.equal(insufficient.json<{ error: string }>().error, "Internal Server Error");
+
+  const wrongChange = await app.inject({
+    method: "POST",
+    url: "/api/mock-payments/complete",
+    payload: {
+      request: paymentRequest("payment_cash_wrong_change", "CASH", {
+        received_cash: 1500,
+        change_given: 200
+      })
+    }
+  });
+  assert.equal(wrongChange.statusCode, 500);
+  assert.equal(wrongChange.json<{ error: string }>().error, "Internal Server Error");
+});
+
+test("order snapshot request_id replay does not create a duplicate order", async () => {
+  const beforeJobs = await getPrintJobs();
+  const request = {
+    request_id: "order_snapshot_replay_same",
+    lines: [basketLine("order-replay-line", 1200)],
+    table_context: tableContext("table-order-replay", "Tisch Replay")
+  };
+
+  const first = await postJson<CreatedOrderSnapshot>("/api/order-snapshots", request, 201);
+  const second = await postJson<CreatedOrderSnapshot>("/api/order-snapshots", request, 201);
+  const openOrders = await getOpenOrders();
+  const afterJobs = await getPrintJobs();
+
+  assert.equal(second.id, first.id);
+  assert.equal(openOrders.filter((order) => order.id === first.id).length, 1);
+  assert.equal(afterJobs.length, beforeJobs.length);
+});
+
+test("staff table orders appear in the POS basket and close when paid from POS", async () => {
+  const table = tableContext("table-staff-payment", "Tisch Staff");
+  const staffOrder = pushStaffOrder("staff_order_pos_payment", table, [
+    { productId: "prod_staff_lemonade", productName: "Staff Lemonade", unitPrice: 700, quantity: 2 }
+  ]);
+
+  const openBefore = await getOpenOrders();
+  assert.equal(openBefore.some((order) => order.id === staffOrder.id), true);
+
+  const basket = await getOpenTableOrderBasket(table.table_id);
+  assert.equal(basket?.order_id, staffOrder.id);
+  assert.equal(basket?.lines.length, 1);
+  assert.equal(basket?.lines[0]?.product_name, "Staff Lemonade");
+  assert.equal(basket?.lines[0]?.quantity, 2);
+  assert.equal(basket?.lines[0]?.line_total, 1400);
+
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "payment_staff_order_from_pos",
+      lines: basket?.lines ?? [],
+      table_context: table,
+      payment_method: "CARD_MANUAL"
+    },
+    201
+  );
+  const openAfter = await getOpenOrders();
+  const basketAfterPayment = await getOpenTableOrderBasket(table.table_id);
+
+  assert.equal(payment.lifecycle_state, "completed");
+  assert.equal(payment.order_id, staffOrder.id);
+  assert.equal(openAfter.some((order) => order.id === staffOrder.id), false);
+  assert.equal(staffOrder.status, "CLOSED");
+  assert.equal(basketAfterPayment, null);
+});
+
+test("staff table payment lookup does not close an order from another location", async () => {
+  const table = tableContext("shared-table-id", "Shared Table");
+  const otherLocationTable = { ...table, location_id: "other_location" };
+  const otherStaffOrder = pushStaffOrder("staff_order_other_location", otherLocationTable, [
+    { productId: "prod_staff_soda", productName: "Other Location Soda", unitPrice: 500, quantity: 1 }
+  ]);
+
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "payment_same_table_other_location_guard",
+      lines: [basketLine("same-table-current-location", 900)],
+      table_context: table,
+      payment_method: "CARD_MANUAL"
+    },
+    201
+  );
+  const openOrders = await getOpenOrders();
+
+  assert.equal(payment.lifecycle_state, "completed");
+  assert.notEqual(payment.order_id, otherStaffOrder.id);
+  assert.equal(otherStaffOrder.status, "OPEN");
+  assert.equal(openOrders.some((order) => order.id === otherStaffOrder.id), true);
+});
+
+test("wallee simulator only closes locally on approved provider result", async () => {
+  const approved = await postJson<CompletedMockPayment>(
+    "/api/payments/wallee-terminal/start",
+    {
+      request_id: "wallee_approved",
+      terminal_id: "terminal-wallee-ok",
+      lines: [basketLine("wallee-ok-line", 1200)],
+      table_context: null,
+      simulator_outcome: "APPROVED"
+    },
+    201
+  );
+
+  assert.equal(approved.provider, "WALLEE_LTI_SIMULATOR");
+  assert.equal(approved.provider_status, "AUTHORIZED");
+  assert.equal(approved.lifecycle_state, "completed");
+
+  for (const outcome of ["DECLINED", "CANCELLED", "TIMEOUT"] as const) {
+    const failed = await app.inject({
+      method: "POST",
+      url: "/api/payments/wallee-terminal/start",
+      payload: {
+        request: {
+          request_id: "wallee_" + outcome.toLowerCase(),
+          terminal_id: "terminal-wallee-fail",
+          lines: [basketLine("wallee-fail-line-" + outcome, 1200)],
+          table_context: null,
+          simulator_outcome: outcome
+        }
+      }
+    });
+    const payment = failed.json<CompletedMockPayment>();
+
+    assert.equal(failed.statusCode, 202);
+    assert.equal(payment.provider_status, outcome);
+    assert.equal(payment.lifecycle_state, "failed");
+    assert.equal(payment.order_id.startsWith("provider_only_"), true);
+  }
+});
+
+test("receipt printer binding creates one receipt job after local payment completion", async () => {
+  const terminalId = "terminal-receipt-sim";
+  const printer = await createPrinter("Receipt Simulator", "simulator");
+  await bindReceiptPrinter(terminalId, printer.id);
+
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      ...paymentRequest("payment_receipt_job", "CARD_MANUAL"),
+      terminal_id: terminalId
+    },
+    201
+  );
+  const jobs = await getPrintJobs();
+
+  assert.equal(payment.lifecycle_state, "completed");
+  assert.match(payment.receipt_print_job_id ?? "", /^print_receipt_/);
+  assert.equal(jobs.filter((job) => job.id === payment.receipt_print_job_id && job.source === "RECEIPT").length, 1);
+});
+
+test("missing receipt printer does not block completed payment", async () => {
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      ...paymentRequest("payment_no_receipt_printer", "CARD_MANUAL"),
+      terminal_id: "terminal-without-receipt-printer"
+    },
+    201
+  );
+
+  assert.equal(payment.lifecycle_state, "completed");
+  assert.equal(payment.receipt_print_job_id, null);
+});
+
+test("print retry request_id replay returns the same job without duplicate jobs", async () => {
+  const terminalId = "terminal-retry-browser";
+  const printer = await createPrinter("Browser Printer", "browser");
+  await bindReceiptPrinter(terminalId, printer.id);
+
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      ...paymentRequest("payment_retry_job", "CARD_MANUAL"),
+      terminal_id: terminalId
+    },
+    201
+  );
+
+  const failedJob = await waitForPrintJob(payment.receipt_print_job_id ?? "", (job) => job.status === "FAILED");
+  const beforeCount = (await getPrintJobs()).length;
+  const retryRequest = { request_id: "print_retry_replay_same" };
+  const first = await postJson<PrintJob>("/api/print-jobs/" + encodeURIComponent(failedJob.id) + "/retry", retryRequest, 200);
+  const second = await postJson<PrintJob>("/api/print-jobs/" + encodeURIComponent(failedJob.id) + "/retry", retryRequest, 200);
+  const afterCount = (await getPrintJobs()).length;
+
+  assert.equal(second.id, first.id);
+  assert.equal(afterCount, beforeCount);
+});
+
+test("day close request_id replay returns the same saved close", async () => {
+  await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    paymentRequest("payment_day_close_replay", "CASH", {
+      received_cash: 1500,
+      change_given: 300
+    }),
+    201
+  );
+  const businessDate = await postJson<{ business_date: string }>(
+    "/api/business-date/current",
+    { business_day_cutover_time: "04:00" },
+    200
+  );
+  const request = {
+    request_id: "day_close_replay_same",
+    business_date: businessDate.business_date,
+    business_day_cutover_time: "04:00",
+    counted_cash: 1200,
+    terminal_id: "terminal-day-close"
+  };
+
+  const first = await postJson<SavedDayClose>("/api/day-close", request, 201);
+  const second = await postJson<SavedDayClose>("/api/day-close", request, 201);
+
+  assert.deepEqual(second, first);
+});
+
+test("day close preview counts legacy completed and lifecycle completed payments", async () => {
+  const businessDate = await postJson<{ business_date: string }>(
+    "/api/business-date/current",
+    { business_day_cutover_time: "04:00" },
+    200
+  );
+  const before = await dayClosePreview(businessDate.business_date);
+  const now = Date.now();
+  const legacyOrderId = "legacy_order_for_day_close";
+
+  posOrders.push({
+    id: legacyOrderId,
+    order_number: "LEGACY-1",
+    table_context: null,
+    lines: [basketLine("legacy-line", 555)],
+    subtotal: 555,
+    tax_total: 40,
+    total: 555,
+    status: "CLOSED",
+    payment_status: "PAID",
+    created_at: now,
+    updated_at: now,
+    closed_at: now
+  });
+  payments.push({
+    id: "legacy_payment_for_day_close",
+    orderId: legacyOrderId,
+    orderNumber: "LEGACY-1",
+    amount: 555,
+    method: "CARD_MANUAL",
+    status: "COMPLETED",
+    createdAt: now
+  });
+  persistPosOrders();
+  persistPayments();
+
+  await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    paymentRequest("payment_lifecycle_day_close", "CARD_MANUAL"),
+    201
+  );
+  const after = await dayClosePreview(businessDate.business_date);
+
+  assert.equal(after.expected_card - before.expected_card, 1755);
+  assert.equal(after.expected_total - before.expected_total, 1755);
+});
+
+async function postJson<T>(url: string, request: unknown, expectedStatus: number): Promise<T> {
+  const response = await app.inject({
+    method: "POST",
+    url,
+    payload: { request }
+  });
+
+  assert.equal(response.statusCode, expectedStatus, response.body);
+  return response.json<T>();
+}
+
+async function getOpenOrders() {
+  const response = await app.inject({ method: "GET", url: "/api/orders/open" });
+
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json<{ data: Array<PosOrderSnapshot | Order> }>().data;
+}
+
+async function getOpenTableOrderBasket(tableId: string) {
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/tables/" + encodeURIComponent(tableId) + "/open-basket"
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json<OpenTableOrderBasket | null>();
+}
+
+async function getPrintJobs() {
+  const response = await app.inject({ method: "GET", url: "/api/print-jobs" });
+
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json<{ data: PrintJob[] }>().data;
+}
+
+async function createPrinter(name: string, provider: "browser" | "simulator") {
+  return postJson<LocalDevice>(
+    "/api/local-devices",
+    {
+      name,
+      type: "PRINTER",
+      provider
+    },
+    201
+  );
+}
+
+async function bindReceiptPrinter(terminalId: string, printerId: string) {
+  await postJson(
+    "/api/pos-device-bindings/" + encodeURIComponent(terminalId),
+    {
+      receipt_printer_device_id: printerId
+    },
+    200
+  );
+}
+
+async function dayClosePreview(businessDate: string) {
+  return postJson<DayClosePreview>(
+    "/api/day-close/preview",
+    {
+      business_date: businessDate,
+      business_day_cutover_time: "04:00"
+    },
+    200
+  );
+}
+
+async function waitForPrintJob(jobId: string, predicate: (job: PrintJob) => boolean) {
+  assert.notEqual(jobId, "");
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const job = (await getPrintJobs()).find((entry) => entry.id === jobId);
+
+    if (job && predicate(job)) {
+      return job;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  assert.fail("Timed out waiting for print job " + jobId);
+}
+
+function paymentRequest(
+  requestId: string,
+  paymentMethod: "CASH" | "CARD_MANUAL",
+  cash: { received_cash?: number; change_given?: number } = {}
+) {
+  return {
+    request_id: requestId,
+    lines: [basketLine(requestId + "_line", 1200)],
+    table_context: null,
+    payment_method: paymentMethod,
+    ...cash
+  };
+}
+
+function basketLine(id: string, amount: number): BasketLine {
+  return {
+    id,
+    product_id: "prod_" + id,
+    product_type: "BASIC",
+    product_name: "Test Product " + id,
+    product_category: "Tests",
+    base_price: amount,
+    tax_code_id: "vat_81",
+    tax_code_name: "VAT 8.1%",
+    tax_rate_bps: 810,
+    station: "Bar",
+    variants: [],
+    unit_total: amount,
+    quantity: 1,
+    line_total: amount
+  };
+}
+
+function pushStaffOrder(
+  id: string,
+  table: TableContext,
+  items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>
+) {
+  const now = Date.now();
+  const order: Order = {
+    id,
+    orderNumber: "S-" + id,
+    source: "STAFF",
+    deviceId: "staff-test-device",
+    locationId: table.location_id,
+    tableId: table.table_id,
+    tableName: table.table_name,
+    guestCount: table.seats ?? 1,
+    status: "OPEN",
+    total: items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
+    items: items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      productName: item.productName,
+      unitPrice: item.unitPrice,
+      totalPrice: item.unitPrice * item.quantity
+    })),
+    createdAt: now,
+    closedAt: null
+  };
+
+  staffOrders.push(order);
+  persistStaffOrders();
+  return order;
+}
+
+function tableContext(tableId: string, tableName: string): TableContext {
+  return {
+    tenant_id: "tenant_test",
+    location_id: "location_test",
+    floor_id: "floor_test",
+    area_id: "area_main",
+    table_id: tableId,
+    table_name: tableName,
+    area_name: "Main",
+    floor_name: "Ground",
+    seats: 2
+  };
+}

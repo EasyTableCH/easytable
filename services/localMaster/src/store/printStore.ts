@@ -49,9 +49,10 @@ import type {
   StationDeviceBindingUpdateRequest
 } from "../types.js";
 
-setInterval(() => {
+const printWorkerInterval = setInterval(() => {
   void processPendingPrintJobs();
 }, 5_000);
+printWorkerInterval.unref?.();
 
 export function listStationDeviceBindings(): StationDeviceBinding[] {
   return listCatalogOutputStations().map((station) => stationDeviceBindingForStation(station.id));

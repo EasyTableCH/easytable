@@ -36,6 +36,20 @@
       "when": 1783059311816,
       "tag": "0004_shallow_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783065600000,
+      "tag": "0005_local_master_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783069200000,
+      "tag": "0006_onboarding_users",
+      "breakpoints": true
     }
   ]
 }

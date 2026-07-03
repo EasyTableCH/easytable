@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
+import { getCloudBinding } from "../cloudBinding.js";
 import { getLocalMasterIdentity } from "../pairing.js";
 import { connectedClientCount } from "../realtime.js";
 import { listOpenOrders } from "../store.js";
@@ -7,6 +8,7 @@ import { listOpenOrders } from "../store.js";
 function getHealthPayload() {
   return {
     ...getLocalMasterIdentity(),
+    cloud_binding: getCloudBinding(),
     clients: connectedClientCount(),
     orders: listOpenOrders().length
   };

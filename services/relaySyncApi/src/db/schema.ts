@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull(),
   displayName: text("display_name").notNull(),
+  passwordHash: text("password_hash"),
   status: userStatus("status").notNull().default("INVITED"),
   ...timestamps,
 }, (table) => [uniqueIndex("idx_users_email").on(table.email)]);
@@ -36,6 +37,18 @@ export const tenantUsers = pgTable("tenant_users", {
 }, (table) => [
   uniqueIndex("idx_tenant_users_unique").on(table.tenantId, table.userId),
   index("idx_tenant_users_tenant").on(table.tenantId, table.role),
+]);
+
+export const tenantUserLocations = pgTable("tenant_user_locations", {
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  locationId: text("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  pinHash: text("pin_hash"),
+  isActive: integer("is_active").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("idx_tenant_user_locations_unique").on(table.tenantId, table.locationId, table.userId),
+  index("idx_tenant_user_locations_location").on(table.tenantId, table.locationId, table.isActive),
 ]);
 
 export const locations = pgTable("locations", {
@@ -51,6 +64,37 @@ export const locations = pgTable("locations", {
 }, (table) => [
   uniqueIndex("idx_locations_tenant_slug").on(table.tenantId, table.slug),
   index("idx_locations_tenant").on(table.tenantId, table.status),
+  uniqueIndex("idx_locations_local_master_instance").on(table.localMasterInstanceId),
+]);
+
+export const localMasterPairingSessions = pgTable("local_master_pairing_sessions", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  locationId: text("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  setupCodeHash: text("setup_code_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  localMasterInstanceId: text("local_master_instance_id"),
+  localMasterUrl: text("local_master_url"),
+  pairingResultJson: jsonb("pairing_result_json"),
+  ...timestamps,
+}, (table) => [
+  index("idx_local_master_pairing_sessions_location").on(table.tenantId, table.locationId, table.expiresAt),
+  uniqueIndex("idx_local_master_pairing_sessions_code_hash").on(table.setupCodeHash),
+]);
+
+export const localMasterCredentials = pgTable("local_master_credentials", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  locationId: text("location_id").notNull().references(() => locations.id, { onDelete: "cascade" }),
+  localMasterInstanceId: text("local_master_instance_id").notNull(),
+  tokenDigest: text("token_digest").notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("idx_local_master_credentials_token").on(table.tokenDigest),
+  index("idx_local_master_credentials_instance").on(table.tenantId, table.locationId, table.localMasterInstanceId, table.revokedAt),
 ]);
 
 export const catalogCategories = pgTable("catalog_categories", {

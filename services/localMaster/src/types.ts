@@ -528,13 +528,15 @@ export type Order = {
   orderNumber: string;
   source: "STAFF";
   deviceId: string;
+  locationId?: string;
   tableId: string;
   tableName: string;
   guestCount: number;
-  status: "OPEN";
+  status: "OPEN" | "CLOSED";
   total: number;
   items: OrderItem[];
   createdAt: number;
+  closedAt?: number | null;
 };
 
 
@@ -590,6 +592,71 @@ export type TerminalRecord = {
   device_fingerprint: string | null;
   paired_at: number;
   last_seen_at: number;
+};
+
+export type CloudBindingStatus = "UNPAIRED" | "PAIRED" | "PAIRED_BOOTSTRAP_FAILED" | "INVALID";
+
+export type CloudBinding = {
+  status: CloudBindingStatus;
+  tenant_id: string | null;
+  location_id: string | null;
+  local_master_instance_id: string | null;
+  relay_base_url: string | null;
+  paired_at: string | null;
+  last_verified_at: string | null;
+  invalid_reason: string | null;
+  bootstrap_completed_at: string | null;
+  bootstrap_error: string | null;
+};
+
+export type CloudPairRequest = {
+  relay_base_url: string;
+  setup_code: string;
+  local_master_url?: string | null;
+};
+
+export type CloudPairResponse = CloudBinding & {
+  relay_token_present: boolean;
+};
+
+export type BootstrapUser = {
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: "OWNER" | "MANAGER" | "STAFF" | "KDS" | "POS_OPERATOR";
+  status: "ACTIVE" | "INVITED" | "DISABLED";
+  pin_hash: string | null;
+  is_active: boolean;
+};
+
+export type LocalMasterBootstrap = {
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  };
+  location: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    slug: string;
+    address: string | null;
+    local_master_instance_id: string | null;
+    service_mode: "TABLE_SERVICE" | "COUNTER_SERVICE";
+    status: string;
+    created_at: string;
+    updated_at: string;
+  };
+  service_mode: "TABLE_SERVICE" | "COUNTER_SERVICE";
+  output_stations: CatalogOutputStation[];
+  users: BootstrapUser[];
+  bootstrapped_at: string;
 };
 export type RealtimeEventType =
   | "CONNECTED"

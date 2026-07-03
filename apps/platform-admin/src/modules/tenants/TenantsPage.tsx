@@ -3,33 +3,46 @@ import { useEffect, useMemo, useState } from "react";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import {
   createLocation,
+  createLocationUser,
+  createLocalMasterPairingSession,
   createOutputStation,
   createTenant,
   getRelaySyncApiUrl,
+  loadCurrentLocalMasterPairingSession,
+  loadLocationUsers,
   loadLocations,
   loadOutputStations,
   loadTenants,
   updateLocation,
+  updateLocationUser,
   updateOutputStation,
   updateTenant,
   type Location,
+  type LocalMasterPairingSession,
   type OutputStation,
   type Tenant,
+  type TenantLocationUser,
 } from "../../lib/relay-sync-api";
+import { LocationUsersSection } from "./components/LocationUsersSection";
 import { LocationsSection } from "./components/LocationsSection";
 import { OutputStationsSection } from "./components/OutputStationsSection";
 import { TenantsSection } from "./components/TenantsSection";
+
+const pairingSessionStorageKey = "easytable.platformAdmin.localMasterPairingSessions";
 
 export function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [outputStations, setOutputStations] = useState<OutputStation[]>([]);
+  const [locationUsers, setLocationUsers] = useState<TenantLocationUser[]>([]);
+  const [pairingSessions, setPairingSessions] = useState<Record<string, LocalMasterPairingSession | undefined>>(() => readCachedPairingSessions());
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [isLoadingStations, setIsLoadingStations] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const filteredTenants = useMemo(() => {
@@ -87,6 +100,7 @@ export function TenantsPage() {
     try {
       const nextLocations = await loadLocations(tenantId);
       setLocations(nextLocations);
+      setPairingSessions((current) => keepSessionsForLocations(current, nextLocations));
       setSelectedLocationId((current) =>
         current && nextLocations.some((location) => location.id === current) ? current : nextLocations[0]?.id ?? null,
       );
@@ -130,6 +144,23 @@ export function TenantsPage() {
     }
   }
 
+  async function refreshLocationUsers(tenantId = selectedTenant?.id, locationId = selectedLocation?.id) {
+    if (!tenantId || !locationId) {
+      return;
+    }
+
+    setIsLoadingUsers(true);
+    setError(null);
+
+    try {
+      setLocationUsers(await loadLocationUsers(tenantId, locationId));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "User konnten nicht geladen werden.");
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }
+
   async function runStationAction(action: () => Promise<void>) {
     if (!selectedTenant || !selectedLocation) {
       return;
@@ -143,6 +174,50 @@ export function TenantsPage() {
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Stations-Aktion fehlgeschlagen.");
       throw actionError;
+    }
+  }
+
+  async function runUserAction(action: () => Promise<void>) {
+    if (!selectedTenant || !selectedLocation) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await action();
+      await refreshLocationUsers(selectedTenant.id, selectedLocation.id);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "User-Aktion fehlgeschlagen.");
+      throw actionError;
+    }
+  }
+
+  async function refreshPairingSession(tenantId = selectedTenant?.id, locationId = selectedLocation?.id) {
+    if (!tenantId || !locationId) {
+      return;
+    }
+
+    try {
+      const session = await loadCurrentLocalMasterPairingSession(tenantId, locationId);
+      setPairingSessions((current) => cachePairingSessions({ ...current, [locationId]: mergePairingSession(current[locationId], session) }));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Pairing-Status konnte nicht geladen werden.");
+    }
+  }
+
+  async function runPairingAction(locationId: string) {
+    if (!selectedTenant) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const session = await createLocalMasterPairingSession(selectedTenant.id, locationId);
+      setPairingSessions((current) => cachePairingSessions({ ...current, [locationId]: session }));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Setup-Code konnte nicht erzeugt werden.");
     }
   }
 
@@ -162,10 +237,13 @@ export function TenantsPage() {
   useEffect(() => {
     if (!selectedTenant || !selectedLocation) {
       setOutputStations([]);
+      setLocationUsers([]);
       return;
     }
 
     void refreshOutputStations(selectedTenant.id, selectedLocation.id);
+    void refreshLocationUsers(selectedTenant.id, selectedLocation.id);
+    void refreshPairingSession(selectedTenant.id, selectedLocation.id);
   }, [selectedTenant?.id, selectedLocation?.id]);
 
   return (
@@ -198,9 +276,11 @@ export function TenantsPage() {
         isLoading={isLoadingLocations}
         locations={locations}
         onCreate={(input) => runLocationAction(async () => void (await createLocation(selectedTenant?.id ?? "", input)))}
+        onCreatePairingSession={runPairingAction}
         onReload={() => refreshLocations()}
         onSelect={setSelectedLocationId}
         onUpdate={(locationId, input) => runLocationAction(async () => void (await updateLocation(selectedTenant?.id ?? "", locationId, input)))}
+        pairingSessions={pairingSessions}
         selectedLocation={selectedLocation}
         tenant={selectedTenant}
       />
@@ -220,6 +300,77 @@ export function TenantsPage() {
         stations={outputStations}
         tenant={selectedTenant}
       />
+
+      <LocationUsersSection
+        isLoading={isLoadingUsers}
+        location={selectedLocation}
+        onCreate={(input) =>
+          runUserAction(async () => void (await createLocationUser(selectedTenant?.id ?? "", selectedLocation?.id ?? "", input)))
+        }
+        onReload={() => refreshLocationUsers()}
+        onUpdate={(userId, input) =>
+          runUserAction(async () =>
+            void (await updateLocationUser(selectedTenant?.id ?? "", selectedLocation?.id ?? "", userId, input))
+          )
+        }
+        tenant={selectedTenant}
+        users={locationUsers}
+      />
     </div>
   );
+}
+
+function mergePairingSession(
+  current: LocalMasterPairingSession | undefined,
+  incoming: LocalMasterPairingSession
+): LocalMasterPairingSession {
+  if (
+    incoming.status === "ACTIVE" &&
+    incoming.setup_code === null &&
+    current?.id === incoming.id &&
+    current.setup_code
+  ) {
+    return { ...incoming, setup_code: current.setup_code };
+  }
+
+  return incoming;
+}
+
+function keepSessionsForLocations(
+  current: Record<string, LocalMasterPairingSession | undefined>,
+  locations: Location[]
+) {
+  const locationIds = new Set(locations.map((location) => location.id));
+  const next: Record<string, LocalMasterPairingSession | undefined> = {};
+
+  for (const [locationId, session] of Object.entries(current)) {
+    if (locationIds.has(locationId)) {
+      next[locationId] = session;
+    }
+  }
+
+  return cachePairingSessions(next);
+}
+
+function readCachedPairingSessions() {
+  try {
+    const raw = window.sessionStorage.getItem(pairingSessionStorageKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, LocalMasterPairingSession | undefined>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function cachePairingSessions(sessions: Record<string, LocalMasterPairingSession | undefined>) {
+  try {
+    window.sessionStorage.setItem(pairingSessionStorageKey, JSON.stringify(sessions));
+  } catch {
+    // The UI can still use in-memory state if sessionStorage is unavailable.
+  }
+
+  return sessions;
 }
