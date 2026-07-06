@@ -7,7 +7,7 @@ import { cn } from "@easytable/ui/lib/utils";
 import type { StaffTableContext } from "../../layout/navigation";
 import {
   loadTableLayoutForConnection,
-  subscribeLocalMasterEvents,
+  subscribeConnectionEvents,
   type TableLayout,
   type TableLayoutArea,
   type TableLayoutFloor,
@@ -20,7 +20,7 @@ type StaffTablePlanScreenProps = {
   onSelectTable: (tableContext: StaffTableContext) => void;
 };
 
-const tablePlanReloadEvents = new Set(["ORDER_CREATED", "TABLE_UPDATED", "TABLE_LAYOUT_UPDATED"]);
+const tablePlanReloadEvents = new Set(["ORDER_CREATED", "TABLE_UPDATED", "TABLE_LAYOUT_UPDATED", "LAYOUT_UPDATED"]);
 
 export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProps) {
   const [layout, setLayout] = useState<TableLayout | null>(null);
@@ -73,27 +73,15 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
   }, [loadLayout]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (tablePlanReloadEvents.has(event.type)) {
         void loadLayout(false);
       }
     });
-  }, [connectionMode, loadLayout]);
-
-  useEffect(() => {
-    if (connectionMode !== "RELAY") {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void loadLayout(false);
-    }, 1_500);
-
-    return () => window.clearInterval(timer);
   }, [connectionMode, loadLayout]);
 
   const activeFloor = useMemo<TableLayoutFloor | undefined>(

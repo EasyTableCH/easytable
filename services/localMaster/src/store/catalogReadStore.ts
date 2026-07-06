@@ -2,7 +2,7 @@ import { getProductById, listProducts as listCatalogProducts } from "../catalogS
 import { variantGroups } from "./storeSeeds.js";
 
 export function listProducts() {
-  return listCatalogProducts();
+  return listCatalogProducts().filter((product) => product.is_available);
 }
 
 export function listProductVariantGroups(productId: string) {

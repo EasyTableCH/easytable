@@ -16,6 +16,7 @@ import {
   listCatalogCategories,
   listCatalogOutputStations,
   listCatalogTaxes,
+  listProducts as listOwnerCatalogProducts,
   updateCatalogCategory,
   updateCatalogProduct,
   updateCatalogTax
@@ -31,7 +32,7 @@ import type {
 } from "../types.js";
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
-  app.get("/api/catalog", async () => ({ data: listProducts() }));
+  app.get("/api/catalog", async () => ({ data: listOwnerCatalogProducts() }));
   app.get("/api/products", async () => ({ data: listProducts() }));
 
   app.get("/api/catalog/categories", async () => ({ data: listCatalogCategories() }));

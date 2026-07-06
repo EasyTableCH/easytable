@@ -1,17 +1,24 @@
 import type { FastifyInstance } from "fastify";
 
+import { openRelayLocationEventStream } from "../lib/realtime.js";
 import { getStaffOutputStations, getStaffProducts, getStaffProductVariantGroups } from "../store/catalogRelayStore.js";
 import { getRelayOpenTableOrderBasket, listRelayKdsTickets, listRelayStationPickups } from "../store/operationsRelayStore.js";
 import {
   createKdsTicketStatusRelayCommand,
   createStaffOrderRelayCommand,
   createStaffPickupAcknowledgeRelayCommand,
-  getStaffRelayCommand
+  getStaffRelayCommand,
+  requireStaffSession
 } from "../store/staffRelayStore.js";
 import { getStaffTableLayout } from "../store/tableLayoutStore.js";
 import type { StaffOrderSnapshotRelayRequest } from "../types.js";
 
 export async function registerStaffRoutes(app: FastifyInstance) {
+  app.get<{ Params: { locationId: string } }>("/api/staff/locations/:locationId/realtime", async (request, reply) => {
+    const session = await requireStaffSession(request.headers, request.params.locationId);
+    return openRelayLocationEventStream(session.tenant_id, request.params.locationId, request, reply);
+  });
+
   app.post<{ Params: { locationId: string }; Body: StaffOrderSnapshotRelayRequest }>(
     "/api/staff/locations/:locationId/order-snapshots",
     async (request, reply) =>

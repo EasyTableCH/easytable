@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WifiOff } from "lucide-react";
 
 import { Button } from "@easytable/ui/components/button";
@@ -9,6 +9,7 @@ import {
   getRelaySyncUrl,
   loadOwnerCatalogForConnection,
   runOwnerCatalogActionForConnection,
+  subscribeConnectionEvents,
   type CatalogCategory,
   type CatalogOutputStation,
   type CatalogProduct,
@@ -33,7 +34,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("OFFLINE");
 
-  async function refreshCatalog() {
+  const refreshCatalog = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -50,7 +51,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
   async function runAction(action: string, payload: unknown) {
     setError(null);
@@ -66,7 +67,19 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
 
   useEffect(() => {
     void refreshCatalog();
-  }, []);
+  }, [refreshCatalog]);
+
+  useEffect(() => {
+    if (connectionMode === "OFFLINE") {
+      return undefined;
+    }
+
+    return subscribeConnectionEvents(connectionMode, (event) => {
+      if (event.type === "CATALOG_UPDATED") {
+        void refreshCatalog();
+      }
+    });
+  }, [connectionMode, refreshCatalog]);
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5">

@@ -6,6 +6,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { getDrizzleDatabase } from "../db/client.js";
 import { catalogCategories, catalogOutputStations, catalogProducts, catalogTaxes, relayCommands } from "../db/schema.js";
 import { publishCommandEvent } from "../lib/nats.js";
+import { broadcastRelayLocationEvent } from "../lib/realtime.js";
 import type {
   CatalogCategory,
   CatalogOutputStation,
@@ -104,7 +105,12 @@ export async function replaceLocalMasterCatalog(relayToken: string, snapshot: Ow
     if (products.length) await tx.insert(catalogProducts).values(products);
   });
 
-  return getCatalogSnapshot(credential.tenantId, credential.locationId);
+  const nextSnapshot = await getCatalogSnapshot(credential.tenantId, credential.locationId);
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "CATALOG_UPDATED",
+    payload: { snapshot: nextSnapshot },
+  });
+  return nextSnapshot;
 }
 
 export async function getStaffProducts(headers: IncomingHttpHeaders, locationId: string): Promise<CatalogProduct[]> {
@@ -192,6 +198,10 @@ export async function createOwnerCatalogCommand(
 
   if (rows[0] && location.localMasterInstanceId) {
     void publishCommandEvent(session.tenant_id, locationId, location.localMasterInstanceId, commandId);
+    broadcastRelayLocationEvent(session.tenant_id, locationId, {
+      type: "RELAY_COMMAND_UPDATED",
+      payload: toRelayCommandResponse(rows[0]),
+    });
   }
 
   return toRelayCommandResponse(rows[0]);

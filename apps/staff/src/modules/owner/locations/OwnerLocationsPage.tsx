@@ -20,7 +20,7 @@ import {
   loadOwnerLocations,
   loadOwnerTableLayout,
   loadTableLayoutForConnection,
-  subscribeLocalMasterEvents,
+  subscribeConnectionEvents,
   updateLayoutArea,
   updateLayoutFloor,
   updateLayoutTable,
@@ -32,7 +32,7 @@ import {
   type TableLayoutTable,
 } from "../../../lib/local-master";
 
-const layoutReloadEvents = new Set(["TABLE_LAYOUT_UPDATED", "TABLE_UPDATED", "ORDER_CREATED"]);
+const layoutReloadEvents = new Set(["TABLE_LAYOUT_UPDATED", "LAYOUT_UPDATED", "TABLE_UPDATED", "ORDER_CREATED"]);
 
 type Draft = {
   name: string;
@@ -108,11 +108,11 @@ export function OwnerLocationsPage() {
   }, [refresh]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (layoutReloadEvents.has(event.type)) {
         void refresh(false);
       }

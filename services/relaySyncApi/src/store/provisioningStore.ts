@@ -4,6 +4,7 @@ import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 
 import { getDrizzleDatabase } from "../db/client.js";
 import { catalogOutputStations, localMasterCredentials, localMasterPairingSessions, locations, relayCommands, tenants } from "../db/schema.js";
+import { broadcastRelayLocationEvent } from "../lib/realtime.js";
 import type {
   CatalogOutputStation,
   LocalMasterBootstrap,
@@ -294,7 +295,12 @@ export async function ackRelayCommand(
     ))
     .returning();
 
-  return toRelayCommand(rows[0]);
+  const updatedCommand = toRelayCommand(rows[0]);
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "RELAY_COMMAND_UPDATED",
+    payload: updatedCommand,
+  });
+  return updatedCommand;
 }
 
 export async function getLocalMasterBootstrap(relayToken: string): Promise<LocalMasterBootstrap> {

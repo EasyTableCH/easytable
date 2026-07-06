@@ -8,7 +8,7 @@ import { cn } from "@easytable/ui/lib/utils";
 import {
   loadCatalogOutputStationsForConnection,
   loadKdsTicketsForConnection,
-  subscribeLocalMasterEvents,
+  subscribeConnectionEvents,
   updateKdsTicketStatusForConnection,
   type CatalogOutputStation,
   type KdsTicket,
@@ -16,7 +16,7 @@ import {
 } from "../../lib/local-master";
 import { useConnectionModeMonitor } from "../../lib/useConnectionModeMonitor";
 
-const kdsReloadEvents = new Set(["ORDER_CREATED", "KDS_TICKET_CREATED", "KDS_TICKET_UPDATED", "KDS_TICKETS_REBUILT"]);
+const kdsReloadEvents = new Set(["ORDER_CREATED", "KDS_TICKET_CREATED", "KDS_TICKET_UPDATED", "KDS_TICKETS_REBUILT", "OPERATIONS_UPDATED"]);
 
 const columns: Array<{
   status: KdsTicketStatus;
@@ -120,28 +120,16 @@ export function KdsPage() {
   }, [loadTickets]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (kdsReloadEvents.has(event.type)) {
         void loadTickets(false);
       }
     });
   }, [connectionMode, loadTickets]);
-
-  useEffect(() => {
-    if (connectionMode !== "RELAY" || !selectedStation) {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void loadTickets(false);
-    }, 1_500);
-
-    return () => window.clearInterval(timer);
-  }, [connectionMode, loadTickets, selectedStation]);
 
   const ticketsByStatus = useMemo(() => {
     return columns.reduce<Record<KdsTicketStatus, KdsTicket[]>>(

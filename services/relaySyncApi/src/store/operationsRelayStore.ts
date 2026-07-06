@@ -3,6 +3,7 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import { getDrizzleDatabase } from "../db/client.js";
 import { kdsTickets, orderItems, orders, stationPickups } from "../db/schema.js";
+import { broadcastRelayLocationEvent } from "../lib/realtime.js";
 import type {
   BasketLine,
   KdsTicket,
@@ -141,11 +142,40 @@ export async function replaceLocalMasterOperations(
     }
   });
 
-  return {
+  const result = {
     ok: true,
     open_order_count: openOrders.length,
     station_pickup_count: pickupRows.length
-  };
+  } as const;
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "OPERATIONS_UPDATED",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "TABLE_UPDATED",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "ORDER_CREATED",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "KDS_TICKET_UPDATED",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "STATION_PICKUP_UPDATED",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "STATION_PICKUP_READY",
+    payload: result,
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "STATION_PICKUP_ACKNOWLEDGED",
+    payload: result,
+  });
+  return result;
 }
 
 export async function getRelayOpenTableOrderBasket(

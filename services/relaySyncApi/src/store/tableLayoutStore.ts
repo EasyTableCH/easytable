@@ -3,6 +3,7 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import { getDrizzleDatabase } from "../db/client.js";
 import { layoutAreas, layoutFloors, layoutTables, locations, tenants } from "../db/schema.js";
+import { broadcastRelayLocationEvent } from "../lib/realtime.js";
 import type { TableLayout } from "../types.js";
 import { ApiError } from "./errors.js";
 import { findOpenTableOrder } from "./operationsRelayStore.js";
@@ -73,7 +74,16 @@ export async function replaceLocalMasterTableLayout(relayToken: string, snapshot
     }
   });
 
-  return getRelayTableLayout(credential.tenantId, credential.locationId);
+  const nextLayout = await getRelayTableLayout(credential.tenantId, credential.locationId);
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "LAYOUT_UPDATED",
+    payload: { layout: nextLayout },
+  });
+  broadcastRelayLocationEvent(credential.tenantId, credential.locationId, {
+    type: "TABLE_UPDATED",
+    payload: { layout: nextLayout },
+  });
+  return nextLayout;
 }
 
 export async function getStaffTableLayout(headers: IncomingHttpHeaders, locationId: string): Promise<TableLayout> {

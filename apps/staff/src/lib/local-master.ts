@@ -337,6 +337,7 @@ type LocalMasterIdentity = {
 const configuredUrl = import.meta.env.VITE_LOCAL_REALTIME_URL as string | undefined;
 const configuredRelayUrl = import.meta.env.VITE_RELAY_SYNC_URL as string | undefined;
 const configuredRelayLocationId = import.meta.env.VITE_RELAY_LOCATION_ID as string | undefined;
+const configuredConnectionMode = (import.meta.env.VITE_STAFF_CONNECTION_MODE as string | undefined)?.toLowerCase();
 
 export function getLocalMasterUrl() {
   if (configuredUrl) {
@@ -351,6 +352,14 @@ export function getRelaySyncUrl() {
 }
 
 export async function detectConnectionMode(): Promise<ConnectionMode> {
+  if (configuredConnectionMode === "local") {
+    return (await canReachExpectedLocalMaster()) ? "LOCAL" : "OFFLINE";
+  }
+
+  if (configuredConnectionMode === "relay") {
+    return getRelaySyncUrl() && configuredRelayLocationId ? "RELAY" : "OFFLINE";
+  }
+
   if (await canReachExpectedLocalMaster()) {
     return "LOCAL";
   }
@@ -791,6 +800,78 @@ export function subscribeLocalMasterEvents(onEvent: (event: LocalMasterEvent) =>
     socket?.close();
   };
 }
+
+export function subscribeConnectionEvents(connectionMode: ConnectionMode, onEvent: (event: LocalMasterEvent) => void) {
+  if (connectionMode === "LOCAL") {
+    return subscribeLocalMasterEvents(onEvent);
+  }
+
+  if (connectionMode === "RELAY") {
+    return subscribeRelayEvents(onEvent);
+  }
+
+  return () => {};
+}
+
+function subscribeRelayEvents(onEvent: (event: LocalMasterEvent) => void) {
+  let source: EventSource | null = null;
+  let reconnectTimer: number | undefined;
+  let shouldReconnect = true;
+
+  function connect() {
+    const locationId = requireStaffRelayLocationId();
+    const url = requireRelaySyncUrl() + "/api/staff/locations/" + encodeURIComponent(locationId) + "/realtime";
+    source = new EventSource(url, { withCredentials: true });
+
+    source.onmessage = parseMessage;
+    for (const eventType of relayEventTypes) {
+      source.addEventListener(eventType, parseMessage);
+    }
+
+    source.onerror = () => {
+      source?.close();
+      source = null;
+      if (shouldReconnect) {
+        reconnectTimer = window.setTimeout(connect, 1_000);
+      }
+    };
+  }
+
+  function parseMessage(message: MessageEvent) {
+    if (typeof message.data !== "string" || !message.data.trim()) {
+      return;
+    }
+
+    try {
+      onEvent(JSON.parse(message.data) as LocalMasterEvent);
+    } catch (error) {
+      console.warn("Could not parse Relay realtime event.", error);
+    }
+  }
+
+  connect();
+
+  return () => {
+    shouldReconnect = false;
+    if (reconnectTimer !== undefined) {
+      window.clearTimeout(reconnectTimer);
+    }
+    source?.close();
+  };
+}
+
+const relayEventTypes = [
+  "RELAY_COMMAND_UPDATED",
+  "CATALOG_UPDATED",
+  "LAYOUT_UPDATED",
+  "TABLE_UPDATED",
+  "OPERATIONS_UPDATED",
+  "ORDER_CREATED",
+  "KDS_TICKET_UPDATED",
+  "STATION_PICKUP_READY",
+  "STATION_PICKUP_ACKNOWLEDGED",
+  "STATION_PICKUP_UPDATED",
+];
 
 export function loadCatalogCategories() {
   return readJson<CatalogCategory[]>("/api/catalog/categories", []);

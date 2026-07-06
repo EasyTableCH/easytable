@@ -7,12 +7,12 @@ import { Card, CardContent } from "@easytable/ui/components/card";
 import {
   acknowledgeStationPickupForConnection,
   loadStationPickupsForConnection,
-  subscribeLocalMasterEvents,
+  subscribeConnectionEvents,
   type StationPickup,
 } from "../../lib/local-master";
 import { useConnectionModeMonitor } from "../../lib/useConnectionModeMonitor";
 
-const pickupReloadEvents = new Set(["STATION_PICKUP_READY", "STATION_PICKUP_ACKNOWLEDGED"]);
+const pickupReloadEvents = new Set(["STATION_PICKUP_READY", "STATION_PICKUP_ACKNOWLEDGED", "STATION_PICKUP_UPDATED", "OPERATIONS_UPDATED"]);
 
 export function StaffPickupsScreen() {
   const [pickups, setPickups] = useState<StationPickup[]>([]);
@@ -51,11 +51,11 @@ export function StaffPickupsScreen() {
   }, [loadPickups]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (!pickupReloadEvents.has(event.type)) {
         return;
       }
@@ -66,18 +66,6 @@ export function StaffPickupsScreen() {
 
       void loadPickups(false);
     });
-  }, [connectionMode, loadPickups]);
-
-  useEffect(() => {
-    if (connectionMode !== "RELAY") {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void loadPickups(false);
-    }, 1_500);
-
-    return () => window.clearInterval(timer);
   }, [connectionMode, loadPickups]);
 
   const itemCount = useMemo(

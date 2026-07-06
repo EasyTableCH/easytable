@@ -8,6 +8,7 @@ import { auth } from "../auth.js";
 import { getDrizzleDatabase } from "../db/client.js";
 import { locations, relayCommands, tenantUserLocations, tenantUsers, users } from "../db/schema.js";
 import { publishCommandEvent } from "../lib/nats.js";
+import { broadcastRelayLocationEvent } from "../lib/realtime.js";
 import type {
   RelayCommand,
   StaffOrderSnapshotRelayRequest,
@@ -77,6 +78,10 @@ export async function createStaffOrderRelayCommand(
 
   if (rows[0] && location.localMasterInstanceId) {
     void publishCommandEvent(session.tenant_id, locationId, location.localMasterInstanceId, commandId);
+    broadcastRelayLocationEvent(session.tenant_id, locationId, {
+      type: "RELAY_COMMAND_UPDATED",
+      payload: toStaffRelayCommand(rows[0]),
+    });
   }
 
   return toStaffRelayCommand(rows[0]);
@@ -133,6 +138,10 @@ export async function createStaffPickupAcknowledgeRelayCommand(
 
   if (rows[0] && location.localMasterInstanceId) {
     void publishCommandEvent(session.tenant_id, locationId, location.localMasterInstanceId, commandId);
+    broadcastRelayLocationEvent(session.tenant_id, locationId, {
+      type: "RELAY_COMMAND_UPDATED",
+      payload: toStaffRelayCommand(rows[0]),
+    });
   }
 
   return toStaffRelayCommand(rows[0]);
@@ -191,6 +200,10 @@ export async function createKdsTicketStatusRelayCommand(
 
   if (rows[0] && location.localMasterInstanceId) {
     void publishCommandEvent(session.tenant_id, locationId, location.localMasterInstanceId, commandId);
+    broadcastRelayLocationEvent(session.tenant_id, locationId, {
+      type: "RELAY_COMMAND_UPDATED",
+      payload: toStaffRelayCommand(rows[0]),
+    });
   }
 
   return toStaffRelayCommand(rows[0]);

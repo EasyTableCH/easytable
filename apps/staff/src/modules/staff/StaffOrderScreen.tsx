@@ -24,7 +24,7 @@ import {
   loadOpenTableOrderBasketForConnection,
   loadProductsForConnection,
   loadProductVariantGroupsForConnection,
-  subscribeLocalMasterEvents,
+  subscribeConnectionEvents,
   type BasketLine,
   type BasketLineVariant,
   type ConnectionMode,
@@ -112,11 +112,11 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   }, [connectionMode]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (event.type === "CATALOG_UPDATED") {
         void loadCatalogProducts();
       }
@@ -156,27 +156,15 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   }, [loadOpenBasket]);
 
   useEffect(() => {
-    if (connectionMode !== "LOCAL") {
+    if (connectionMode === "OFFLINE") {
       return undefined;
     }
 
-    return subscribeLocalMasterEvents((event) => {
+    return subscribeConnectionEvents(connectionMode, (event) => {
       if (event.type === "ORDER_CREATED" || event.type === "TABLE_UPDATED") {
         void loadOpenBasket(false);
       }
     });
-  }, [connectionMode, loadOpenBasket]);
-
-  useEffect(() => {
-    if (connectionMode !== "RELAY") {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void loadOpenBasket(false);
-    }, 1_500);
-
-    return () => window.clearInterval(timer);
   }, [connectionMode, loadOpenBasket]);
 
   const productCards = useMemo(

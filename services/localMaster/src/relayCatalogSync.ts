@@ -1,9 +1,10 @@
 import {
   listCatalogCategories,
   listCatalogOutputStations,
-  listCatalogTaxes
+  listCatalogTaxes,
+  listProducts as listOwnerCatalogProducts
 } from "./catalogStore.js";
-import { listProductVariantGroups, listProducts } from "./store.js";
+import { listProductVariantGroups } from "./store.js";
 
 type RelayRuntimeBinding = {
   tenant_id: string | null;
@@ -14,7 +15,7 @@ type RelayRuntimeBinding = {
 };
 
 export function getCatalogSnapshot() {
-  const products = listProducts();
+  const products = listOwnerCatalogProducts();
 
   return {
     products,
