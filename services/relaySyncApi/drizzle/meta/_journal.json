@@ -85,6 +85,13 @@
       "when": 1783331301893,
       "tag": "0011_majestic_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783334760902,
+      "tag": "0012_orange_the_hand",
+      "breakpoints": true
     }
   ]
 }

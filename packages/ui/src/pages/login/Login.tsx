@@ -1,8 +1,11 @@
-
 import { LoginForm } from "../../forms/login/Login"
 import { useTranslation } from "../../i18n"
 
-export function Login() {
+export interface LoginProps {
+  onSuccess?: () => void
+}
+
+export function Login({ onSuccess }: LoginProps) {
   const { t } = useTranslation("ui")
 
   return (
@@ -15,7 +18,7 @@ export function Login() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <LoginForm />
+            <LoginForm onSuccess={onSuccess} />
           </div>
         </div>
       </div>

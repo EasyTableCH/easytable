@@ -18,6 +18,7 @@ export async function buildServer() {
 
   await app.register(cors, {
     origin: true,
+    credentials: true,
   });
 
   app.setErrorHandler((error, _request, reply) => {

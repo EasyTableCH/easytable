@@ -28,6 +28,7 @@ export const users = pgTable("users", {
   image: text("image"),
   passwordHash: text("password_hash"),
   status: userStatus("status").notNull().default("INVITED"),
+  role: text("role").notNull().default("user"),
   ...timestamps,
 }, (table) => [uniqueIndex("idx_users_email").on(table.email)]);
 

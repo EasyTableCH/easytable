@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@easytable/ui": "0.1.0",
+    "@easytable/auth": "0.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useSession, signOut } from "@easytable/auth";
+import { Login } from "@easytable/ui/pages/login/Login";
 
 import { AppLayout } from "./layout/AppLayout";
 import { defaultView, type AppView } from "./layout/navigation";
@@ -10,8 +12,43 @@ import { ModulePlaceholder } from "./modules/placeholder/ModulePlaceholder";
 import { StaffServicePage } from "./modules/staff/StaffServicePage";
 
 function App() {
+  const { data: sessionData, isPending } = useSession();
+  const [authDetails, setAuthDetails] = useState<{
+    user: any;
+    tenants: Array<{ tenantId: string; role: string; tenantName: string }>;
+  } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState<AppView>(defaultView);
   const [effectiveServiceMode, setEffectiveServiceMode] = useState<LocationServiceMode>("TABLE_SERVICE");
+
+  useEffect(() => {
+    if (!sessionData) return;
+    
+    let isMounted = true;
+    async function fetchMe() {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_RELAY_SYNC_URL || "http://localhost:3100"}/api/auth/me`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setAuthDetails(data);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching auth details", err);
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    }
+    void fetchMe();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -47,7 +84,71 @@ function App() {
     };
   }, []);
 
+  if (isPending || (sessionData && authLoading)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <p className="text-sm font-semibold text-muted-foreground animate-pulse">
+          Lade Session...
+        </p>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return <Login onSuccess={() => window.location.reload()} />;
+  }
+
+  const isPlatformAdmin = authDetails?.user?.role === "platform_admin";
+  const targetTenantId = import.meta.env.VITE_RELAY_TENANT_ID;
+  const tenantRelation = authDetails?.tenants?.find((t) => t.tenantId === targetTenantId);
+
+  // If not platform admin, they must belong to this tenant
+  if (!isPlatformAdmin && !tenantRelation) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-center">
+        <h1 className="text-2xl font-bold text-destructive">Zugriff verweigert</h1>
+        <p className="max-w-md text-muted-foreground">
+          Dein Account ({sessionData.user.email}) hat keinen Zugriff auf diesen Mandanten.
+        </p>
+        <button
+          className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          onClick={async () => {
+            await signOut();
+            window.location.reload();
+          }}
+        >
+          Abmelden
+        </button>
+      </div>
+    );
+  }
+
+  const userRole = isPlatformAdmin ? "platform_admin" : tenantRelation?.role;
+
+  const hasAccessToModule = (module: string) => {
+    if (userRole === "platform_admin") return true;
+    if (module === "owner") return userRole === "OWNER" || userRole === "MANAGER";
+    if (module === "staff") return userRole === "OWNER" || userRole === "MANAGER" || userRole === "STAFF";
+    if (module === "kds") return userRole === "OWNER" || userRole === "MANAGER" || userRole === "KDS";
+    return false;
+  };
+
   const isStaffModuleAvailable = effectiveServiceMode === "TABLE_SERVICE";
+
+  if (!hasAccessToModule(view.module)) {
+    return (
+      <AppLayout onNavigate={setView} serviceMode={effectiveServiceMode} view={view}>
+        <div className="mx-auto grid min-h-[calc(100svh-7rem)] max-w-4xl place-items-center">
+          <section className="w-full rounded-md border bg-card p-6 text-card-foreground shadow-sm sm:p-8 text-center">
+            <h2 className="text-2xl font-semibold text-destructive">Zugriff verweigert</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Deine Rolle ({userRole}) berechtigt dich nicht zum Zugriff auf diesen Bereich ({view.module}).
+            </p>
+          </section>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout onNavigate={setView} serviceMode={effectiveServiceMode} view={view}>

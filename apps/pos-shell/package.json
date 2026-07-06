@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@easytable/ui": "0.1.0",
+    "@easytable/auth": "0.1.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "lucide-react": "^0.468.0",
