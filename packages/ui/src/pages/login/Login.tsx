@@ -1,5 +1,6 @@
 import { LoginForm } from "../../forms/login/Login"
 import { useTranslation } from "../../i18n"
+import WelcomeImage from "../../assets/pos_logo_welcome.webp"
 
 export interface LoginProps {
   onSuccess?: () => void
@@ -24,7 +25,7 @@ export function Login({ onSuccess }: LoginProps) {
       </div>
       <div className="relative hidden bg-muted lg:block">
         <img
-          src="https://images6.alphacoders.com/121/thumb-1920-1210276.jpg"
+          src={WelcomeImage}
           alt={t("login.heroAlt")}
           className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
         />
