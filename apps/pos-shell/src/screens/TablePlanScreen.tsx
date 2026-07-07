@@ -139,23 +139,27 @@ export function TablePlanScreen({
 
   return (
     <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f7f8fc] text-slate-950">
-      <section className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-300 px-5">
-        {layout?.floors.map((floor) => (
-          <Button
-            key={floor.id}
-            variant={floor.id === activeFloorId ? "default" : "secondary"}
-            className={cn(
-              "h-10 shrink-0 rounded-[2rem] px-4 text-sm font-extrabold uppercase tracking-normal transition active:scale-[0.98]",
-              floor.id === activeFloorId
-                ? "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-950"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200",
-            )}
-            onClick={() => handleFloorSelect(floor)}
-          >
-            {floor.name}
-          </Button>
-        ))}
-      </section>
+      {layout?.floors.length === 1 ? (
+          <></>
+        ) : (
+          <section className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-300 px-5">
+            {layout?.floors.map((floor) => (
+              <Button
+                key={floor.id}
+                variant={floor.id === activeFloorId ? "default" : "secondary"}
+                className={cn(
+                  "h-10 shrink-0 rounded-[2rem] px-4 text-sm font-extrabold uppercase tracking-normal transition active:scale-[0.98]",
+                  floor.id === activeFloorId
+                    ? "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-950"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200",
+                )}
+                onClick={() => handleFloorSelect(floor)}
+              >
+                {floor.name}
+              </Button>
+            ))}
+          </section>
+        )}
 
       <section className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-300 px-5">
         {activeFloor?.areas.map((area) => (

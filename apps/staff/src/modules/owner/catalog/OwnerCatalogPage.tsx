@@ -83,16 +83,6 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5">
-      <section className="flex flex-col gap-3 rounded-md border bg-card p-4 text-card-foreground shadow-sm sm:p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Owner / Katalog</p>
-          <h2 className="text-2xl font-semibold tracking-normal">{sectionTitle(section)}</h2>
-        </div>
-        <span className="max-w-full truncate rounded-md border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-          {connectionMode === "RELAY" ? getRelaySyncUrl() : getLocalMasterUrl()}
-        </span>
-      </section>
-
       {error ? <ErrorBanner message={error} onRetry={refreshCatalog} /> : null}
 
       {section === "products" ? (

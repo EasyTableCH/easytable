@@ -117,25 +117,31 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
   }
 
   return (
-    <section className="mx-auto flex h-[calc(100svh-6.5rem)] max-w-5xl touch-manipulation flex-col overflow-hidden rounded-md border bg-[#f7f8fc] text-slate-950 shadow-sm">
+    <section className="mx-auto flex h-[calc(100svh-6.5rem)] touch-manipulation flex-col overflow-hidden rounded-md border bg-[#f7f8fc] text-slate-950 shadow-sm">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 px-3 sm:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {layout?.floors.map((floor) => (
-            <Button
-              key={floor.id}
-              variant={floor.id === activeFloorId ? "default" : "secondary"}
-              className={cn(
-                "h-10 shrink-0 rounded-[2rem] px-4 text-sm font-extrabold uppercase tracking-normal transition active:scale-[0.98]",
-                floor.id === activeFloorId
-                  ? "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-950"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200",
-              )}
-              onClick={() => handleFloorSelect(floor)}
-            >
-              {floor.name}
-            </Button>
-          ))}
-        </div>
+
+        {layout?.floors.length === 1 ? (
+          <></>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {layout?.floors.map((floor) => (
+              <Button
+                key={floor.id}
+                variant={floor.id === activeFloorId ? "default" : "secondary"}
+                className={cn(
+                  "h-10 shrink-0 rounded-[2rem] px-4 text-sm font-extrabold uppercase tracking-normal transition active:scale-[0.98]",
+                  floor.id === activeFloorId
+                    ? "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-950"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200",
+                )}
+                onClick={() => handleFloorSelect(floor)}
+              >
+                {floor.name}
+              </Button>
+            ))}
+          </div>
+        )}
+
         <Badge
           variant="secondary"
           className={cn(
@@ -178,22 +184,19 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
               return (
                 <Button
                   key={table.id}
-                  variant="ghost"
+                  variant="default"
                   className="h-auto rounded-md p-0 text-slate-950 transition active:scale-[0.985]"
                   onClick={() => handleTableSelect(table)}
                 >
                   <Card
                     className={cn(
-                      "aspect-[1.04] min-h-32 w-full rounded-md bg-white py-0 shadow-md shadow-slate-200/80 transition group-hover/button:bg-white",
+                      "aspect-[1.04] min-h-32 w-full rounded-md border border-slate-300 bg-white py-0 shadow-lg transition group-hover/button:bg-white",
                       hasOpenOrder ? "ring-2 ring-emerald-300" : "ring-1 ring-slate-100",
                     )}
                   >
                     <CardContent className="flex h-full flex-col items-center justify-center p-3 text-center">
-                      <span className="max-w-full truncate text-3xl font-black text-slate-950 sm:text-4xl">
+                      <span className="max-w-full truncate text-3xl font-black text-slate-950 sm:text-6xl">
                         {table.name}
-                      </span>
-                      <span className="mt-2 text-xs font-black uppercase text-slate-500 sm:text-sm">
-                        {table.seats} Sitzplätze
                       </span>
                       {hasOpenOrder ? (
                         <Badge
