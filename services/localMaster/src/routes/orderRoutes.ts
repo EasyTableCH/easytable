@@ -6,13 +6,16 @@ import { broadcast } from "../realtime.js";
 import { completeMockPaymentSchema, createOrderSchema, createOrderSnapshotSchema } from "../schemas.js";
 import {
   completeMockPayment,
+  createOrderStorno,
   createOrder,
   createOrderSnapshot,
+  getOrderSnapshot,
   listOpenOrders,
   startWalleeTerminalPayment
 } from "../store.js";
 import type {
   CompleteMockPaymentRequest,
+  CreateOrderStornoRequest,
   CreateOrderSnapshotRequest,
   OrderDraft,
   StartWalleeTerminalPaymentRequest
@@ -21,6 +24,10 @@ import type { PosRequestBody } from "./types.js";
 
 export async function registerOrderRoutes(app: FastifyInstance) {
   app.get("/api/orders/open", async () => ({ data: listOpenOrders() }));
+
+  app.get<{ Params: { orderId: string } }>("/api/orders/:orderId/snapshot", async (request) =>
+    getOrderSnapshot(request.params.orderId)
+  );
 
   app.post<{ Body: OrderDraft }>("/api/orders", { schema: createOrderSchema }, async (request, reply) => {
     const { order, table } = createOrder(request.body);
@@ -103,6 +110,17 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       }
 
       return reply.code(payment.lifecycle_state === "completed" ? 201 : 202).send(payment);
+    }
+  );
+
+  app.post<{ Params: { orderId: string }; Body: PosRequestBody<CreateOrderStornoRequest> }>(
+    "/api/orders/:orderId/stornos",
+    async (request, reply) => {
+      const result = createOrderStorno(request.params.orderId, request.body.request);
+      broadcast("ORDER_STORNO_RECORDED", { storno: result });
+      broadcast("PAYMENT_UPDATED", { storno: result });
+      pushOperationsToRelayIfPaired();
+      return reply.code(201).send(result);
     }
   );
 }

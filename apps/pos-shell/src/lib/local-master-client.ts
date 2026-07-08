@@ -3,6 +3,7 @@ import type {
   CatalogOutputStation,
   CloudBinding,
   CompletedMockPayment,
+  CreateOrderStornoRequest,
   CreateOrderSnapshotRequest,
   DayClosePreview,
   CreatedOrderSnapshot,
@@ -10,6 +11,8 @@ import type {
   LocalDeviceInput,
   LocalMasterIdentity,
   MockPaymentRequest,
+  OrderSnapshotListItem,
+  OrderSnapshotResponse,
   PosDeviceBinding,
   PosDeviceBindingUpdateRequest,
   PosSettingsFile,
@@ -27,6 +30,7 @@ import type {
   TableLayout,
   TerminalPairingConfig,
   TerminalRecord,
+  StornoResult,
   WalleeTerminalPaymentRequest,
 } from "./pos-types";
 
@@ -269,6 +273,32 @@ export function startWalleeTerminalPayment(request: WalleeTerminalPaymentRequest
 
 export function loadPosSettings() {
   return readJson<PosSettingsFile>("/api/pos-settings");
+}
+
+export function loadReportingOrderSnapshots(filters: {
+  from?: string;
+  to?: string;
+  query?: string;
+  payment_method?: string;
+  terminal_id?: string;
+  storno_state?: string;
+} = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      query.set(key, value);
+    }
+  }
+  const suffix = query.toString() ? "?" + query.toString() : "";
+  return readJson<OrderSnapshotListItem[]>("/api/reporting/order-snapshots" + suffix);
+}
+
+export function loadOrderSnapshot(orderId: string) {
+  return readJson<OrderSnapshotResponse>("/api/orders/" + encodeURIComponent(orderId) + "/snapshot");
+}
+
+export function createOrderStorno(orderId: string, request: CreateOrderStornoRequest) {
+  return writeJson<StornoResult>("/api/orders/" + encodeURIComponent(orderId) + "/stornos", { request });
 }
 
 export function loadOutputStations() {

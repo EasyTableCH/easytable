@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bell, Building2, ChefHat, ClipboardList, Package, Percent, ReceiptText, ShieldCheck, Tags, Users } from "lucide-react";
+import { BarChart3, Bell, Building2, ChefHat, ClipboardList, Package, Percent, ReceiptText, ShieldCheck, Tags, Users } from "lucide-react";
 
 import { AppShell, type AppShellNavigationGroup, type AppShellUser } from "@easytable/ui/layouts/app-shell";
 
@@ -26,7 +26,7 @@ const modules: Array<{
   { module: "kds", label: "KDS", icon: ChefHat },
 ];
 
-const ownerCatalogItems: Array<{
+export const ownerCatalogItems: Array<{
   section: OwnerCatalogSection;
   label: string;
   icon: typeof Package;
@@ -36,6 +36,7 @@ const ownerCatalogItems: Array<{
   { section: "taxes", label: "Steuern", icon: Percent },
   { section: "locations", label: "Tischverwaltung", icon: Building2 },
   { section: "employees", label: "Mitarbeiter", icon: Users },
+  { section: "analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 const staffItems: Array<{
@@ -132,6 +133,10 @@ function viewTitle(view: AppView) {
 
     if (view.ownerSection === "employees") {
       return "Owner / Mitarbeiter";
+    }
+
+    if (view.ownerSection === "analytics") {
+      return "Owner / Analytics";
     }
 
     return view.ownerSection === "products" ? "Katalog / Produkte" : view.ownerSection === "categories" ? "Katalog / Kategorien" : "Katalog / Steuern";

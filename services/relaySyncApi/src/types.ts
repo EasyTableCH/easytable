@@ -225,6 +225,26 @@ export type RelayCommandAckRequest = {
   error?: string | null;
 };
 
+export type LocalMasterFinancialEvent = {
+  id: string;
+  event_type: string;
+  aggregate_id: string;
+  payload: unknown;
+  created_at: number;
+};
+
+export type LocalMasterFinancialEventsRequest = {
+  tenant_id?: string;
+  location_id?: string;
+  local_master_instance_id?: string;
+  events: LocalMasterFinancialEvent[];
+};
+
+export type LocalMasterFinancialEventsResponse = {
+  accepted_event_ids: string[];
+  failed_events: Array<{ id: string; error: string }>;
+};
+
 export type StaffOrderSnapshotRelayRequest = {
   request_id: string;
   lines: unknown[];

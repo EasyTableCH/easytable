@@ -2,10 +2,12 @@ import type { FastifyInstance } from "fastify";
 
 import { ackRelayCommand, getLocalMasterBootstrap, listPendingRelayCommands, pairLocalMaster } from "../store/provisioningStore.js";
 import { replaceLocalMasterCatalog } from "../store/catalogRelayStore.js";
+import { ingestLocalMasterFinancialEvents } from "../store/financialRelayStore.js";
 import { replaceLocalMasterOperations } from "../store/operationsRelayStore.js";
 import { replaceLocalMasterTableLayout } from "../store/tableLayoutStore.js";
 import type {
   LocalMasterOperationsSnapshot,
+  LocalMasterFinancialEventsRequest,
   LocalMasterPairRequest,
   OwnerCatalogSnapshot,
   RelayCommandAckRequest,
@@ -40,6 +42,10 @@ export async function registerLocalMasterRoutes(app: FastifyInstance) {
 
   app.put<{ Body: LocalMasterOperationsSnapshot }>("/api/local-masters/operations", async (request) =>
     replaceLocalMasterOperations(readBearerToken(request.headers.authorization), request.body)
+  );
+
+  app.post<{ Body: LocalMasterFinancialEventsRequest }>("/api/local-master/financial-events", async (request, reply) =>
+    reply.code(202).send(await ingestLocalMasterFinancialEvents(readBearerToken(request.headers.authorization), request.body))
   );
 }
 

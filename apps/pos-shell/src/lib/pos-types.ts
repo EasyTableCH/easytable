@@ -279,6 +279,94 @@ export type CompletedMockPayment = {
   completed_at: number | null;
 };
 
+export type OrderSnapshotResponse = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  snapshot_type: "PAID";
+  table_context: TableContext | null;
+  lines: BasketLine[];
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  payment: {
+    payment_id: string;
+    request_id: string;
+    method: string;
+    amount: number;
+    terminal_id: string | null;
+    provider: string;
+    provider_transaction_id: string | null;
+    provider_status: string;
+    lifecycle_state: string;
+    paid_at: number;
+  };
+  terminal_id: string | null;
+  business_date: string;
+  created_at: number;
+  refunded_total: number;
+  remaining_total: number;
+};
+
+export type OrderSnapshotListItem = OrderSnapshotResponse & {
+  storno_state: "NONE" | "PARTIAL" | "FULL";
+};
+
+export type CreateOrderStornoRequest = {
+  request_id: string;
+  kind: "FULL" | "PARTIAL";
+  reason: string;
+  terminal_id?: string;
+  business_date?: string;
+  lines?: Array<{
+    line_id: string;
+    quantity: number;
+  }>;
+  provider?: string;
+  provider_refund_id?: string;
+  provider_status?: string;
+};
+
+export type SalesLedgerEntry = {
+  id: string;
+  request_id: string;
+  entry_type: "SALE_COMPLETED" | "PAYMENT_RECORDED" | "ORDER_VOIDED" | "ORDER_PARTIALLY_VOIDED" | "REFUND_RECORDED";
+  order_id: string;
+  order_number: string;
+  payment_id: string | null;
+  original_entry_id: string | null;
+  line_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  product_category: string | null;
+  quantity: number;
+  gross_amount: number;
+  tax_amount: number;
+  payment_method: string | null;
+  terminal_id: string | null;
+  provider: string | null;
+  provider_transaction_id: string | null;
+  provider_refund_id: string | null;
+  provider_status: string | null;
+  reason: string | null;
+  business_date: string;
+  occurred_at: number;
+};
+
+export type StornoResult = {
+  order_id: string;
+  order_number: string;
+  kind: "FULL" | "PARTIAL";
+  reason: string;
+  refunded_amount: number;
+  remaining_amount: number;
+  provider: string;
+  provider_transaction_id: string | null;
+  provider_refund_id: string | null;
+  provider_status: string;
+  ledger_entries: SalesLedgerEntry[];
+};
+
 export type OpenTableOrderBasket = {
   order_id: string;
   order_number: string;

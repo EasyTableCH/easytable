@@ -11,6 +11,7 @@ import { rebuildKdsTicketsForOrder } from "./kdsStore.js";
 import { rebuildStationPrintJobsForOrder, enqueueReceiptPrintJob } from "./printStore.js";
 import { areas, floors, layoutTables } from "./storeSeeds.js";
 import { startWalleeLtiPayment } from "./walleeLtiProvider.js";
+import { recordCompletedSaleSnapshot } from "./reportingStore.js";
 import {
   payments,
   persistPayments,
@@ -248,6 +249,10 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
     advancePaymentLifecycle(paymentRecord, "reversal_required");
   }
 
+  if (paymentRecord.lifecycleState === "completed") {
+    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toCompletedMockPayment(paymentRecord));
+  }
+
   return {
     payment: toCompletedMockPayment(paymentRecord),
     table: savedOrder.order.table_context ? tableFromContext(savedOrder.order.table_context, "FREE") : null
@@ -369,6 +374,10 @@ function startWalleeTerminalPaymentUnchecked(
     paymentRecord.status = "FAILED";
     paymentRecord.failureReason = error instanceof Error ? error.message : String(error);
     advancePaymentLifecycle(paymentRecord, "reversal_required");
+  }
+
+  if (paymentRecord.lifecycleState === "completed") {
+    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toCompletedMockPayment(paymentRecord));
   }
 
   return {

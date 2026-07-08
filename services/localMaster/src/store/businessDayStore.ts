@@ -1,12 +1,13 @@
 import { enqueueZReportPrintJob } from "./printStore.js";
-import { dayCloses, payments, persistDayCloses, posOrders } from "./storeState.js";
+import { dayCloses, persistDayCloses } from "./storeState.js";
+import { getSalesReportForWindow } from "./reportingStore.js";
 import {
   appendOutboxEvent,
   beginIdempotentCommand,
   completeIdempotentCommand,
   failIdempotentCommand
 } from "./commandStore.js";
-import type { PosOrderSnapshot, StoredDayClose } from "./storeState.js";
+import type { StoredDayClose } from "./storeState.js";
 import type {
   CurrentBusinessDate,
   CurrentBusinessDateRequest,
@@ -25,33 +26,7 @@ export function getCurrentBusinessDate(request: CurrentBusinessDateRequest): Cur
 
 export function getDayClosePreview(request: DayClosePreviewRequest): DayClosePreview {
   const window = businessDayWindow(request.business_date, request.business_day_cutover_time);
-  const completedPayments = payments.filter(
-    (payment) =>
-      isCompletedPayment(payment) &&
-      payment.createdAt >= window.startMs &&
-      payment.createdAt < window.endMs
-  );
-  const paidOrderIds = new Set(completedPayments.map((payment) => payment.orderId));
-  const paidOrders = posOrders.filter(
-    (order) =>
-      paidOrderIds.has(order.id) &&
-      order.status === "CLOSED" &&
-      order.payment_status === "PAID"
-  );
-  const expectedCash = completedPayments
-    .filter((payment) => payment.method === "CASH")
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const expectedCard = completedPayments
-    .filter((payment) =>
-      payment.method === "CARD_MANUAL" ||
-      payment.method === "WALLEE" ||
-      payment.method === "WALLEE_TERMINAL"
-    )
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const itemCount = paidOrders.reduce(
-    (sum, order) => sum + order.lines.reduce((lineSum, line) => lineSum + line.quantity, 0),
-    0
-  );
+  const report = getSalesReportForWindow(window.businessDate, window.startMs, window.endMs);
   const existingClose = dayCloses.get(window.businessDate);
 
   return {
@@ -59,12 +34,12 @@ export function getDayClosePreview(request: DayClosePreviewRequest): DayClosePre
     business_day_cutover_time: window.cutoverTime,
     window_start_ms: window.startMs,
     window_end_ms: window.endMs,
-    expected_cash: expectedCash,
-    expected_card: expectedCard,
-    expected_total: expectedCash + expectedCard,
-    order_count: paidOrders.length,
-    item_count: itemCount,
-    product_sales: buildProductSales(paidOrders),
+    expected_cash: report.payment_totals.cash,
+    expected_card: report.payment_totals.card_manual + report.payment_totals.wallee_terminal,
+    expected_total: report.gross_total,
+    order_count: report.order_count,
+    item_count: report.item_count,
+    product_sales: report.product_sales,
     existing_close: existingClose
       ? {
           counted_cash: existingClose.counted_cash,
@@ -132,38 +107,6 @@ function saveDayCloseUnchecked(request: SaveDayCloseRequest): SavedDayClose {
     item_count: saved.item_count,
     created_at: saved.created_at
   };
-}
-
-function buildProductSales(orders: PosOrderSnapshot[]): DayCloseProductSale[] {
-  const salesByProduct = new Map<string, DayCloseProductSale>();
-
-  for (const order of orders) {
-    for (const line of order.lines) {
-      const key = line.product_id + ":" + line.product_name;
-      const existing = salesByProduct.get(key);
-
-      if (existing) {
-        existing.quantity += line.quantity;
-        existing.total += line.line_total;
-      } else {
-        salesByProduct.set(key, {
-          product_id: line.product_id,
-          product_name: line.product_name,
-          product_category: line.product_category,
-          quantity: line.quantity,
-          total: line.line_total
-        });
-      }
-    }
-  }
-
-  return Array.from(salesByProduct.values()).sort(
-    (left, right) => right.total - left.total || left.product_name.localeCompare(right.product_name)
-  );
-}
-
-function isCompletedPayment(payment: { status: string; lifecycleState?: string }) {
-  return payment.lifecycleState === "completed" || (!payment.lifecycleState && payment.status === "COMPLETED");
 }
 
 function currentBusinessDate(cutoverTime: string) {

@@ -150,6 +150,55 @@ export type CreatedOrderSnapshot = {
   continued_existing_order: boolean;
 };
 
+export type SalesLedgerEntry = {
+  id: string;
+  request_id: string;
+  entry_type: "SALE_COMPLETED" | "PAYMENT_RECORDED" | "ORDER_VOIDED" | "ORDER_PARTIALLY_VOIDED" | "REFUND_RECORDED";
+  order_id: string;
+  order_number: string;
+  payment_id: string | null;
+  original_entry_id: string | null;
+  line_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  product_category: string | null;
+  quantity: number;
+  gross_amount: number;
+  tax_amount: number;
+  payment_method: string | null;
+  terminal_id: string | null;
+  provider: string | null;
+  provider_transaction_id: string | null;
+  provider_refund_id: string | null;
+  provider_status: string | null;
+  reason: string | null;
+  business_date: string;
+  occurred_at: number;
+};
+
+export type SalesReport = {
+  business_date: string;
+  window_start_ms: number;
+  window_end_ms: number;
+  gross_total: number;
+  tax_total: number;
+  order_count: number;
+  item_count: number;
+  payment_totals: {
+    cash: number;
+    card_manual: number;
+    wallee_terminal: number;
+  };
+  product_sales: Array<{
+    product_id: string;
+    product_name: string;
+    product_category: string;
+    quantity: number;
+    total: number;
+  }>;
+  entries: SalesLedgerEntry[];
+};
+
 export type ConnectionMode = "LOCAL" | "RELAY" | "OFFLINE";
 
 export type TenantUserRole = "OWNER" | "MANAGER" | "STAFF" | "KDS" | "POS_OPERATOR";
@@ -484,6 +533,26 @@ export function loadPosSettings() {
   });
 }
 
+export function loadSalesReport(businessDate: string, businessDayCutoverTime = "00:00") {
+  const query = new URLSearchParams({
+    business_date: businessDate,
+    business_day_cutover_time: businessDayCutoverTime
+  });
+  return readJson<SalesReport>("/api/reporting/sales?" + query.toString(), emptySalesReport(businessDate));
+}
+
+export function loadSalesReportForConnection(connectionMode: ConnectionMode, businessDate: string, businessDayCutoverTime = "00:00") {
+  if (connectionMode === "LOCAL") {
+    return loadSalesReport(businessDate, businessDayCutoverTime);
+  }
+
+  if (connectionMode === "RELAY") {
+    throw new Error("Cloud Analytics ist erst verfuegbar, wenn Snapshot/Ledger-Sync in RelaySyncApi aktiv ist.");
+  }
+
+  throw new Error(describeConnectionUnavailable());
+}
+
 export function loadTableLayout() {
   return readJson<TableLayout>("/api/table-layout", {
     tenant: { id: "", name: "" },
@@ -618,6 +687,25 @@ export function describeConnectionUnavailable() {
   }
 
   return "Keine Verbindung zu LocalMaster oder Relay.";
+}
+
+function emptySalesReport(businessDate: string): SalesReport {
+  return {
+    business_date: businessDate,
+    window_start_ms: 0,
+    window_end_ms: 0,
+    gross_total: 0,
+    tax_total: 0,
+    order_count: 0,
+    item_count: 0,
+    payment_totals: {
+      cash: 0,
+      card_manual: 0,
+      wallee_terminal: 0
+    },
+    product_sales: [],
+    entries: []
+  };
 }
 
 function requireStaffRelayLocationId() {

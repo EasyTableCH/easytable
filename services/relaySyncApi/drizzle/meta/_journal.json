@@ -99,6 +99,13 @@
       "when": 1783364014305,
       "tag": "0013_user_replica_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783382400000,
+      "tag": "0014_financial_readmodels",
+      "breakpoints": true
     }
   ]
 }

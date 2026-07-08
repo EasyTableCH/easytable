@@ -7,6 +7,7 @@ import { defaultView, type AppView, type StaffModule } from "./layout/navigation
 import { detectConnectionMode, loadPosSettings, type LocationServiceMode } from "./lib/local-master";
 import { AccountSetupPage } from "./modules/account-setup/AccountSetupPage";
 import { KdsPage } from "./modules/kds/KdsPage";
+import { OwnerAnalyticsPage } from "./modules/owner/analytics/OwnerAnalyticsPage";
 import { OwnerCatalogPage } from "./modules/owner/catalog/OwnerCatalogPage";
 import { OwnerEmployeesPage } from "./modules/owner/employees/OwnerEmployeesPage";
 import { OwnerLocationsPage } from "./modules/owner/locations/OwnerLocationsPage";
@@ -189,6 +190,8 @@ function AuthenticatedApp() {
           <OwnerLocationsPage />
         ) : activeView.ownerSection === "employees" ? (
           <OwnerEmployeesPage />
+        ) : activeView.ownerSection === "analytics" ? (
+          <OwnerAnalyticsPage />
         ) : (
           <OwnerCatalogPage section={activeView.ownerSection} />
         )

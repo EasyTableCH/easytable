@@ -279,3 +279,139 @@ export const pairedTerminals = sqliteTable(
   },
   (table) => [index("idx_paired_terminals_seen").on(table.lastSeenAt)]
 );
+
+export const orderSnapshots = sqliteTable(
+  "order_snapshots",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id").notNull(),
+    orderNumber: text("order_number").notNull(),
+    snapshotType: text("snapshot_type").notNull(),
+    tableContextJson: text("table_context_json"),
+    subtotal: integer("subtotal").notNull(),
+    taxTotal: integer("tax_total").notNull(),
+    total: integer("total").notNull(),
+    paymentId: text("payment_id").notNull(),
+    paymentRequestId: text("payment_request_id").notNull(),
+    paymentMethod: text("payment_method").notNull(),
+    paymentAmount: integer("payment_amount").notNull(),
+    paymentTerminalId: text("payment_terminal_id"),
+    provider: text("provider").notNull(),
+    providerTransactionId: text("provider_transaction_id"),
+    providerStatus: text("provider_status").notNull(),
+    paymentLifecycleState: text("payment_lifecycle_state").notNull(),
+    paidAt: integer("paid_at").notNull(),
+    terminalId: text("terminal_id"),
+    businessDate: text("business_date").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_order_snapshots_order").on(table.orderId),
+    index("idx_order_snapshots_business_date").on(table.businessDate, table.createdAt),
+    index("idx_order_snapshots_payment").on(table.paymentMethod, table.paymentId),
+    index("idx_order_snapshots_terminal").on(table.terminalId)
+  ]
+);
+
+export const orderSnapshotLines = sqliteTable(
+  "order_snapshot_lines",
+  {
+    id: text("id").primaryKey(),
+    snapshotId: text("snapshot_id").notNull().references(() => orderSnapshots.id, { onDelete: "cascade" }),
+    orderId: text("order_id").notNull(),
+    lineId: text("line_id").notNull(),
+    productId: text("product_id").notNull(),
+    productType: text("product_type").notNull(),
+    productName: text("product_name").notNull(),
+    productCategory: text("product_category").notNull(),
+    basePrice: integer("base_price").notNull(),
+    taxCodeId: text("tax_code_id").notNull(),
+    taxCodeName: text("tax_code_name").notNull(),
+    taxRateBps: integer("tax_rate_bps").notNull(),
+    station: text("station").notNull(),
+    variantsJson: text("variants_json").notNull(),
+    unitTotal: integer("unit_total").notNull(),
+    quantity: integer("quantity").notNull(),
+    lineTotal: integer("line_total").notNull(),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_order_snapshot_lines_snapshot_line").on(table.snapshotId, table.lineId),
+    index("idx_order_snapshot_lines_order").on(table.orderId),
+    index("idx_order_snapshot_lines_product").on(table.productId, table.productName)
+  ]
+);
+
+export const salesLedgerEntries = sqliteTable(
+  "sales_ledger_entries",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    entryType: text("entry_type").notNull(),
+    orderId: text("order_id").notNull(),
+    orderNumber: text("order_number").notNull(),
+    paymentId: text("payment_id"),
+    originalEntryId: text("original_entry_id"),
+    lineId: text("line_id"),
+    productId: text("product_id"),
+    productName: text("product_name"),
+    productCategory: text("product_category"),
+    quantity: integer("quantity").notNull(),
+    grossAmount: integer("gross_amount").notNull(),
+    taxAmount: integer("tax_amount").notNull(),
+    paymentMethod: text("payment_method"),
+    terminalId: text("terminal_id"),
+    provider: text("provider"),
+    providerTransactionId: text("provider_transaction_id"),
+    providerRefundId: text("provider_refund_id"),
+    providerStatus: text("provider_status"),
+    reason: text("reason"),
+    businessDate: text("business_date").notNull(),
+    occurredAt: integer("occurred_at").notNull()
+  },
+  (table) => [
+    index("idx_sales_ledger_business_date").on(table.businessDate, table.occurredAt),
+    index("idx_sales_ledger_order").on(table.orderId, table.entryType),
+    index("idx_sales_ledger_payment").on(table.paymentId),
+    index("idx_sales_ledger_method").on(table.paymentMethod, table.businessDate),
+    index("idx_sales_ledger_terminal").on(table.terminalId, table.businessDate)
+  ]
+);
+
+export const localOutbox = sqliteTable(
+  "local_outbox",
+  {
+    id: text("id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    syncedAt: integer("synced_at"),
+    syncAttemptCount: integer("sync_attempt_count").notNull().default(0),
+    lastSyncError: text("last_sync_error")
+  },
+  (table) => [
+    index("idx_local_outbox_pending").on(table.syncedAt, table.createdAt),
+    index("idx_local_outbox_aggregate").on(table.aggregateId, table.createdAt)
+  ]
+);
+
+export const commandInbox = sqliteTable(
+  "command_inbox",
+  {
+    id: text("id").primaryKey(),
+    commandType: text("command_type").notNull(),
+    requestId: text("request_id").notNull(),
+    payloadFingerprint: text("payload_fingerprint").notNull(),
+    status: text("status").notNull(),
+    resultJson: text("result_json"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    completedAt: integer("completed_at")
+  },
+  (table) => [
+    uniqueIndex("idx_command_inbox_command_request").on(table.commandType, table.requestId),
+    index("idx_command_inbox_status").on(table.status, table.updatedAt)
+  ]
+);

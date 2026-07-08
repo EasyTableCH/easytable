@@ -55,6 +55,13 @@ export {
 } from "./store/businessDayStore.js";
 
 export {
+  createOrderStorno,
+  getOrderSnapshot,
+  getSalesReportForBusinessDate,
+  listOrderSnapshotsForReporting
+} from "./store/reportingStore.js";
+
+export {
   clearPrintLogs,
   createLocalDevice,
   getPosDeviceBinding,

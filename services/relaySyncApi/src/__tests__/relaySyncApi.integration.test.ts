@@ -198,6 +198,133 @@ test("PowerSync token and upload endpoints accept known tables and ignore unknow
   }
 });
 
+test("financial events from LocalMaster populate read models idempotently", { skip: !hasDatabase }, async () => {
+  const ctx = assertModules();
+  const seed = await seedTenantLocation(ctx);
+  const pairingSession = await ctx.createLocalMasterPairingSession(seed.tenantId, seed.locationId);
+  const pairing = await ctx.pairLocalMaster({
+    setup_code: pairingSession.setup_code ?? "",
+    instance_id: "lm_financial_" + seed.suffix
+  });
+  const paidAt = Date.now();
+  const snapshotEvent = {
+    id: "evt_snapshot_" + seed.suffix,
+    event_type: "ORDER_SNAPSHOT_RECORDED",
+    aggregate_id: "order_" + seed.suffix,
+    created_at: paidAt,
+    payload: {
+      id: "snap_order_" + seed.suffix,
+      order_id: "order_" + seed.suffix,
+      order_number: "R-" + seed.suffix,
+      snapshot_type: "PAID",
+      table_context: null,
+      subtotal: 925,
+      tax_total: 75,
+      total: 1000,
+      lines: [{
+        id: "line_1",
+        product_id: "prod_1",
+        product_type: "BASIC",
+        product_name: "Espresso",
+        product_category: "Bar",
+        base_price: 1000,
+        tax_code_id: "vat",
+        tax_code_name: "VAT",
+        tax_rate_bps: 810,
+        station: "Bar",
+        variants: [],
+        unit_total: 1000,
+        quantity: 1,
+        line_total: 1000
+      }],
+      payment: {
+        payment_id: "pay_" + seed.suffix,
+        request_id: "pay_req_" + seed.suffix,
+        method: "CASH",
+        amount: 1000,
+        terminal_id: "terminal_1",
+        provider: "LOCAL",
+        provider_transaction_id: null,
+        provider_status: "LOCAL_COMPLETED",
+        lifecycle_state: "completed",
+        paid_at: paidAt
+      },
+      terminal_id: "terminal_1",
+      business_date: "2026-07-08",
+      created_at: paidAt
+    }
+  };
+  const ledgerEvent = {
+    id: "evt_ledger_" + seed.suffix,
+    event_type: "SALES_LEDGER_UPDATED",
+    aggregate_id: "order_" + seed.suffix,
+    created_at: paidAt,
+    payload: {
+      order_id: "order_" + seed.suffix,
+      ledger_entries: [{
+        id: "ledger_sale_" + seed.suffix,
+        request_id: "pay_req_" + seed.suffix,
+        entry_type: "SALE_COMPLETED",
+        order_id: "order_" + seed.suffix,
+        order_number: "R-" + seed.suffix,
+        payment_id: "pay_" + seed.suffix,
+        original_entry_id: null,
+        line_id: "line_1",
+        product_id: "prod_1",
+        product_name: "Espresso",
+        product_category: "Bar",
+        quantity: 1,
+        gross_amount: 1000,
+        tax_amount: 75,
+        payment_method: "CASH",
+        terminal_id: "terminal_1",
+        provider: "LOCAL",
+        provider_transaction_id: null,
+        provider_refund_id: null,
+        provider_status: "LOCAL_COMPLETED",
+        reason: null,
+        business_date: "2026-07-08",
+        occurred_at: paidAt
+      }]
+    }
+  };
+
+  const first = await ctx.ingestLocalMasterFinancialEvents(pairing.relay_token, {
+    tenant_id: seed.tenantId,
+    location_id: seed.locationId,
+    local_master_instance_id: pairing.local_master_instance_id,
+    events: [snapshotEvent, ledgerEvent]
+  });
+  const replay = await ctx.ingestLocalMasterFinancialEvents(pairing.relay_token, {
+    events: [snapshotEvent, ledgerEvent]
+  });
+
+  assert.deepEqual(first.failed_events, []);
+  assert.deepEqual(replay.failed_events, []);
+
+  const snapshots = await ctx.db
+    .select()
+    .from(ctx.schema.orderSnapshots)
+    .where(ctx.eq(ctx.schema.orderSnapshots.orderId, "order_" + seed.suffix));
+  const lines = await ctx.db
+    .select()
+    .from(ctx.schema.orderSnapshotLines)
+    .where(ctx.eq(ctx.schema.orderSnapshotLines.orderId, "order_" + seed.suffix));
+  const ledger = await ctx.db
+    .select()
+    .from(ctx.schema.salesLedgerEntries)
+    .where(ctx.eq(ctx.schema.salesLedgerEntries.orderId, "order_" + seed.suffix));
+  const outbox = await ctx.db
+    .select()
+    .from(ctx.schema.localMasterOutboxEvents)
+    .where(ctx.eq(ctx.schema.localMasterOutboxEvents.aggregateId, "order_" + seed.suffix));
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(lines.length, 1);
+  assert.equal(ledger.length, 1);
+  assert.equal(outbox.length, 2);
+});
+
 test("location user setup link sets password and PIN and queues bootstrap refresh", { skip: !hasDatabase }, async () => {
   const ctx = assertModules();
   const seed = await seedTenantLocation(ctx);
@@ -465,6 +592,7 @@ async function loadModules() {
   const dbClient = await import("../db/client.js");
   const schema = await import("../db/schema.js");
   const provisioning = await import("../store/provisioningStore.js");
+  const financialRelayStore = await import("../store/financialRelayStore.js");
   const server = await import("../server.js");
   const authRoutes = await import("../routes/authRoutes.js");
   const powerSyncRoutes = await import("../routes/powersyncRoutes.js");
@@ -479,6 +607,7 @@ async function loadModules() {
   return {
     ...dbClient,
     ...provisioning,
+    ...financialRelayStore,
     ...server,
     ...authRoutes,
     ...powerSyncRoutes,

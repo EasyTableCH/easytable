@@ -13,8 +13,12 @@ import type {
   LocalDevice,
   OpenTableOrderBasket,
   Order,
+  OrderSnapshotListItem,
+  OrderSnapshotResponse,
   PrintJob,
+  SalesReport,
   SavedDayClose,
+  StornoResult,
   TableContext,
   TableLayout
 } from "../types.js";
@@ -26,17 +30,27 @@ process.env.LOCAL_MASTER_DISABLE_NATS = "1";
 
 const { buildServer } = await import("../server.js");
 const { getDrizzleDatabase } = await import("../db/client.js");
-const { localState } = await import("../db/schema.js");
+const {
+  commandInbox: commandInboxTable,
+  localOutbox: localOutboxTable,
+  localState,
+  orderSnapshotLines: orderSnapshotLinesTable,
+  orderSnapshots: orderSnapshotsTable,
+  salesLedgerEntries: salesLedgerEntriesTable
+} = await import("../db/schema.js");
 const { pollRelayCommands } = await import("../relayCommandWorker.js");
 const { eq } = await import("drizzle-orm");
 const {
   payments,
+  orderSnapshots,
   persistPayments,
   persistPosOrders,
   persistStaffOrders,
   posOrders,
+  salesLedgerEntries,
   staffOrders
 } = await import("../store/storeState.js");
+const { readState } = await import("../statePersistence.js");
 
 const app = await buildServer({ logger: false });
 
@@ -230,6 +244,408 @@ test("wallee simulator only closes locally on approved provider result", async (
   }
 });
 
+test("completed cash payment creates immutable order snapshot and ledger entries once", async () => {
+  const beforeSnapshots = orderSnapshots.length;
+  const beforeLedger = salesLedgerEntries.length;
+  const request = paymentRequest("payment_snapshot_cash", "CASH", {
+    received_cash: 1500,
+    change_given: 300
+  });
+
+  const payment = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const replay = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const snapshot = await getOrderSnapshot(payment.order_id);
+  const saleEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "SALE_COMPLETED");
+  const paymentEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "PAYMENT_RECORDED");
+  const outbox = readState<Array<{ event_type: string; aggregate_id: string }>>("localOutbox", []);
+  const sqlSnapshot = getDrizzleDatabase()
+    .select()
+    .from(orderSnapshotsTable)
+    .where(eq(orderSnapshotsTable.orderId, payment.order_id))
+    .get();
+  const sqlLines = getDrizzleDatabase()
+    .select()
+    .from(orderSnapshotLinesTable)
+    .where(eq(orderSnapshotLinesTable.orderId, payment.order_id))
+    .all();
+  const sqlLedger = getDrizzleDatabase()
+    .select()
+    .from(salesLedgerEntriesTable)
+    .where(eq(salesLedgerEntriesTable.orderId, payment.order_id))
+    .all();
+  const sqlOutbox = getDrizzleDatabase()
+    .select()
+    .from(localOutboxTable)
+    .where(eq(localOutboxTable.aggregateId, payment.order_id))
+    .all();
+  const sqlCommand = getDrizzleDatabase()
+    .select()
+    .from(commandInboxTable)
+    .where(eq(commandInboxTable.requestId, request.request_id))
+    .get();
+
+  assert.equal(replay.payment_id, payment.payment_id);
+  assert.equal(orderSnapshots.length - beforeSnapshots, 1);
+  assert.equal(salesLedgerEntries.length - beforeLedger, 2);
+  assert.equal(snapshot.order_id, payment.order_id);
+  assert.equal(snapshot.lines[0]?.product_name, request.lines[0]?.product_name);
+  assert.equal(snapshot.lines[0]?.tax_rate_bps, 810);
+  assert.equal(snapshot.payment.provider, "LOCAL");
+  assert.equal(snapshot.payment.method, "CASH");
+  assert.equal(saleEntries.length, 1);
+  assert.equal(paymentEntries.length, 1);
+  assert.equal(saleEntries[0]?.gross_amount, 1200);
+  assert.equal(paymentEntries[0]?.gross_amount, 1200);
+  assert.equal(sqlSnapshot?.orderId, payment.order_id);
+  assert.equal(sqlLines.length, 1);
+  assert.equal(sqlLedger.length, 2);
+  assert.equal(sqlOutbox.some((entry) => entry.eventType === "ORDER_SNAPSHOT_RECORDED"), true);
+  assert.equal(sqlCommand?.status, "COMPLETED");
+  assert.equal(outbox.some((entry) => entry.event_type === "ORDER_SNAPSHOT_RECORDED" && entry.aggregate_id === payment.order_id), true);
+  assert.equal(outbox.some((entry) => entry.event_type === "SALES_LEDGER_UPDATED" && entry.aggregate_id === payment.order_id), true);
+});
+
+test("order snapshot reporting list filters paid snapshots and exposes storno state", async () => {
+  const paid = await postJson<CompletedMockPayment>("/api/mock-payments/complete", paymentRequest("snapshot_list_paid", "CASH", {
+    lines: [basketLine("snapshot-list-line", 2400, 2)],
+    terminal_id: "terminal-list-a",
+    received_cash: 4800,
+    change_given: 0
+  }), 201);
+  await postJson<StornoResult>("/api/orders/" + paid.order_id + "/stornos", {
+    request_id: "snapshot_list_partial_storno",
+    kind: "PARTIAL",
+    reason: "Test partial",
+    terminal_id: "terminal-list-a",
+    lines: [{ line_id: "snapshot-list-line", quantity: 1 }]
+  }, 201);
+
+  await postJson<CompletedMockPayment>("/api/mock-payments/complete", paymentRequest("snapshot_list_other", "CARD_MANUAL", {
+    terminal_id: "terminal-list-b"
+  }), 201);
+
+  const matching = await getJson<OrderSnapshotListItem[]>("/api/reporting/order-snapshots?query=" + encodeURIComponent(paid.order_number));
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0]?.order_id, paid.order_id);
+  assert.equal(matching[0]?.storno_state, "PARTIAL");
+  assert.equal(matching[0]?.refunded_total, 2400);
+  assert.equal(matching[0]?.remaining_total, 2400);
+
+  const terminalFiltered = await getJson<OrderSnapshotListItem[]>("/api/reporting/order-snapshots?terminal_id=terminal-list-a&storno_state=PARTIAL");
+  assert.ok(terminalFiltered.some((snapshot) => snapshot.order_id === paid.order_id));
+  assert.ok(terminalFiltered.every((snapshot) => snapshot.terminal_id === "terminal-list-a" || snapshot.payment.terminal_id === "terminal-list-a"));
+
+  const paymentFiltered = await getJson<OrderSnapshotListItem[]>("/api/reporting/order-snapshots?payment_method=CASH");
+  assert.ok(paymentFiltered.some((snapshot) => snapshot.order_id === paid.order_id));
+  assert.ok(paymentFiltered.every((snapshot) => snapshot.payment.method === "CASH"));
+});
+
+test("completed wallee terminal payment snapshots provider fields and failed provider outcomes do not create sales", async () => {
+  const beforeSnapshots = orderSnapshots.length;
+  const beforeLedger = salesLedgerEntries.length;
+  const approved = await postJson<CompletedMockPayment>(
+    "/api/payments/wallee-terminal/start",
+    {
+      request_id: "payment_snapshot_wallee",
+      terminal_id: "terminal-wallee-snapshot",
+      lines: [basketLine("wallee-snapshot-line", 1600)],
+      table_context: null,
+      simulator_outcome: "APPROVED"
+    },
+    201
+  );
+
+  const failed = await postJson<CompletedMockPayment>(
+    "/api/payments/wallee-terminal/start",
+    {
+      request_id: "payment_snapshot_wallee_declined",
+      terminal_id: "terminal-wallee-snapshot",
+      lines: [basketLine("wallee-snapshot-fail-line", 1600)],
+      table_context: null,
+      simulator_outcome: "DECLINED"
+    },
+    202
+  );
+  const snapshot = await getOrderSnapshot(approved.order_id);
+
+  assert.equal(orderSnapshots.length - beforeSnapshots, 1);
+  assert.equal(salesLedgerEntries.length - beforeLedger, 2);
+  assert.equal(snapshot.payment.provider, "WALLEE_LTI_SIMULATOR");
+  assert.equal(snapshot.payment.provider_transaction_id, approved.provider_transaction_id);
+  assert.equal(snapshot.payment.terminal_id, "terminal-wallee-snapshot");
+  assert.equal(failed.lifecycle_state, "failed");
+  assert.equal(orderSnapshots.some((entry) => entry.order_id === failed.order_id), false);
+  assert.equal(salesLedgerEntries.some((entry) => entry.order_id === failed.order_id), false);
+});
+
+test("sales reporting uses ledger entries and excludes unpaid or failed provider-only records", async () => {
+  const businessDate = await postJson<{ business_date: string }>(
+    "/api/business-date/current",
+    { business_day_cutover_time: "04:00" },
+    200
+  );
+  const before = await salesReport(businessDate.business_date);
+  await postJson<CreatedOrderSnapshot>(
+    "/api/order-snapshots",
+    {
+      request_id: "reporting_unpaid_order",
+      lines: [basketLine("reporting-unpaid-line", 999)],
+      table_context: tableContext("table_basilica_fumoir_2", "2")
+    },
+    201
+  );
+  await postJson<CompletedMockPayment>(
+    "/api/payments/wallee-terminal/start",
+    {
+      request_id: "reporting_failed_provider_only",
+      terminal_id: "terminal-reporting-failed",
+      lines: [basketLine("reporting-failed-provider-line", 1300)],
+      table_context: null,
+      simulator_outcome: "TIMEOUT"
+    },
+    202
+  );
+  await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "reporting_card_sale",
+      lines: [basketLine("reporting-card-sale-line", 2100)],
+      table_context: null,
+      payment_method: "CARD_MANUAL"
+    },
+    201
+  );
+  const after = await salesReport(businessDate.business_date);
+
+  assert.equal(after.gross_total - before.gross_total, 2100);
+  assert.equal(after.payment_totals.card_manual - before.payment_totals.card_manual, 2100);
+  assert.equal(after.entries.some((entry) => entry.request_id === "reporting_unpaid_order"), false);
+  assert.equal(after.entries.some((entry) => entry.request_id === "reporting_failed_provider_only"), false);
+});
+
+test("partial storno creates negative ledger entries and rejects over-storno", async () => {
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "storno_partial_payment",
+      lines: [basketLine("storno-partial-line", 500, 3)],
+      table_context: null,
+      payment_method: "CARD_MANUAL"
+    },
+    201
+  );
+  const first = await createStorno(payment.order_id, {
+    request_id: "storno_partial_one",
+    kind: "PARTIAL",
+    reason: "Gast retour",
+    terminal_id: "terminal-storno",
+    lines: [{ line_id: "storno-partial-line", quantity: 1 }]
+  }, 201);
+  const replay = await createStorno(payment.order_id, {
+    request_id: "storno_partial_one",
+    kind: "PARTIAL",
+    reason: "Gast retour",
+    terminal_id: "terminal-storno",
+    lines: [{ line_id: "storno-partial-line", quantity: 1 }]
+  }, 201);
+  const over = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: {
+      request: {
+        request_id: "storno_partial_over",
+        kind: "PARTIAL",
+        reason: "Zu viel",
+        terminal_id: "terminal-storno",
+        lines: [{ line_id: "storno-partial-line", quantity: 3 }]
+      }
+    }
+  });
+  const correction = first.ledger_entries.find((entry) => entry.entry_type === "ORDER_PARTIALLY_VOIDED");
+
+  assert.equal(replay.refunded_amount, first.refunded_amount);
+  assert.equal(first.refunded_amount, 500);
+  assert.equal(first.remaining_amount, 1000);
+  assert.equal(correction?.quantity, -1);
+  assert.equal(correction?.gross_amount, -500);
+  assert.equal(over.statusCode, 500);
+});
+
+test("full storno after partial only reverses remaining quantities and rejects when empty", async () => {
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "storno_full_after_partial_payment",
+      lines: [basketLine("storno-full-after-partial-line", 400, 3)],
+      table_context: null,
+      payment_method: "CASH",
+      received_cash: 1500,
+      change_given: 300
+    },
+    201
+  );
+  await createStorno(payment.order_id, {
+    request_id: "storno_full_partial_first",
+    kind: "PARTIAL",
+    reason: "Ein Artikel retour",
+    terminal_id: "terminal-storno-full",
+    lines: [{ line_id: "storno-full-after-partial-line", quantity: 1 }]
+  }, 201);
+  const full = await createStorno(payment.order_id, {
+    request_id: "storno_full_remaining",
+    kind: "FULL",
+    reason: "Rest retour",
+    terminal_id: "terminal-storno-full"
+  }, 201);
+  const empty = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: {
+      request: {
+        request_id: "storno_full_empty",
+        kind: "FULL",
+        reason: "Nochmal",
+        terminal_id: "terminal-storno-full"
+      }
+    }
+  });
+
+  assert.equal(full.refunded_amount, 800);
+  assert.equal(full.remaining_amount, 0);
+  assert.equal(full.ledger_entries.find((entry) => entry.entry_type === "ORDER_VOIDED")?.quantity, -2);
+  assert.equal(empty.statusCode, 500);
+});
+
+test("storno validation rejects unknown, zero, and conflicting partial requests", async () => {
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "storno_validation_payment",
+      lines: [basketLine("storno-validation-line", 700, 2)],
+      table_context: null,
+      payment_method: "CARD_MANUAL"
+    },
+    201
+  );
+  const zero = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: { request: { request_id: "storno_zero", kind: "PARTIAL", reason: "Zero", lines: [{ line_id: "storno-validation-line", quantity: 0 }] } }
+  });
+  const unknown = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: { request: { request_id: "storno_unknown", kind: "PARTIAL", reason: "Unknown", lines: [{ line_id: "missing", quantity: 1 }] } }
+  });
+  await createStorno(payment.order_id, {
+    request_id: "storno_conflict_same_id",
+    kind: "PARTIAL",
+    reason: "One",
+    lines: [{ line_id: "storno-validation-line", quantity: 1 }]
+  }, 201);
+  const conflict = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: { request: { request_id: "storno_conflict_same_id", kind: "PARTIAL", reason: "Changed", lines: [{ line_id: "storno-validation-line", quantity: 1 }] } }
+  });
+
+  assert.equal(zero.statusCode, 500);
+  assert.equal(unknown.statusCode, 500);
+  assert.equal(conflict.statusCode, 500);
+});
+
+test("day close preview uses ledger corrections and saved close is immutable after storno", async () => {
+  const businessDate = await postJson<{ business_date: string }>(
+    "/api/business-date/current",
+    { business_day_cutover_time: "04:00" },
+    200
+  );
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/mock-payments/complete",
+    {
+      request_id: "storno_day_close_payment",
+      lines: [basketLine("storno-day-close-line", 1000, 2)],
+      table_context: null,
+      payment_method: "CASH",
+      received_cash: 2500,
+      change_given: 500
+    },
+    201
+  );
+  const beforeClose = await dayClosePreview(businessDate.business_date);
+  const saved = await postJson<SavedDayClose>(
+    "/api/day-close",
+    {
+      request_id: "day_close_before_late_storno",
+      business_date: businessDate.business_date,
+      business_day_cutover_time: "04:00",
+      counted_cash: beforeClose.expected_cash,
+      terminal_id: "terminal-day-close-storno"
+    },
+    201
+  );
+  await createStorno(payment.order_id, {
+    request_id: "storno_after_saved_day_close",
+    kind: "PARTIAL",
+    reason: "Nach Abschluss retour",
+    terminal_id: "terminal-day-close-storno",
+    lines: [{ line_id: "storno-day-close-line", quantity: 1 }]
+  }, 201);
+  const afterStorno = await dayClosePreview(businessDate.business_date);
+
+  assert.equal(afterStorno.existing_close?.counted_cash, saved.counted_cash);
+  assert.equal(afterStorno.existing_close?.created_at, saved.created_at);
+  assert.equal(beforeClose.expected_cash - afterStorno.expected_cash, 1000);
+  assert.equal(afterStorno.product_sales.some((entry) => entry.product_id === "prod_storno-day-close-line" && entry.quantity >= 1), true);
+});
+
+test("wallee storno keeps original transaction and provider failure records no refund ledger", async () => {
+  const payment = await postJson<CompletedMockPayment>(
+    "/api/payments/wallee-terminal/start",
+    {
+      request_id: "wallee_storno_payment",
+      terminal_id: "terminal-wallee-storno",
+      lines: [basketLine("wallee-storno-line", 1400)],
+      table_context: null,
+      simulator_outcome: "APPROVED"
+    },
+    201
+  );
+  const failed = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
+    payload: {
+      request: {
+        request_id: "wallee_storno_failed_provider",
+        kind: "FULL",
+        reason: "Provider refused",
+        terminal_id: "terminal-wallee-storno",
+        provider: "WALLEE_LTI_SIMULATOR",
+        provider_refund_id: "refund_failed",
+        provider_status: "FAILED"
+      }
+    }
+  });
+  const beforeRefundEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "REFUND_RECORDED").length;
+  const storno = await createStorno(payment.order_id, {
+    request_id: "wallee_storno_success",
+    kind: "FULL",
+    reason: "Terminal refund",
+    terminal_id: "terminal-wallee-storno",
+    provider: "WALLEE_LTI_SIMULATOR",
+    provider_refund_id: "refund_success",
+    provider_status: "REFUNDED"
+  }, 201);
+  const afterRefundEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "REFUND_RECORDED").length;
+
+  assert.equal(failed.statusCode, 500);
+  assert.equal(beforeRefundEntries, 0);
+  assert.equal(afterRefundEntries, 1);
+  assert.equal(storno.provider_transaction_id, payment.provider_transaction_id);
+  assert.equal(storno.provider_refund_id, "refund_success");
+  assert.equal(storno.provider_status, "REFUNDED");
+});
+
 test("receipt printer binding creates one receipt job after local payment completion", async () => {
   const terminalId = "terminal-receipt-sim";
   const printer = await createPrinter("Receipt Simulator", "simulator");
@@ -317,7 +733,7 @@ test("day close request_id replay returns the same saved close", async () => {
   assert.deepEqual(second, first);
 });
 
-test("day close preview counts legacy completed and lifecycle completed payments", async () => {
+test("day close preview ignores legacy payments without ledger and counts lifecycle completed ledger payments", async () => {
   const businessDate = await postJson<{ business_date: string }>(
     "/api/business-date/current",
     { business_day_cutover_time: "04:00" },
@@ -360,8 +776,8 @@ test("day close preview counts legacy completed and lifecycle completed payments
   );
   const after = await dayClosePreview(businessDate.business_date);
 
-  assert.equal(after.expected_card - before.expected_card, 1755);
-  assert.equal(after.expected_total - before.expected_total, 1755);
+  assert.equal(after.expected_card - before.expected_card, 1200);
+  assert.equal(after.expected_total - before.expected_total, 1200);
 });
 
 test("table layout is seeded into local SQLite and served through legacy endpoint", async () => {
@@ -834,6 +1250,13 @@ async function postJson<T>(url: string, request: unknown, expectedStatus: number
   return response.json<T>();
 }
 
+async function getJson<T>(url: string, expectedStatus = 200): Promise<T> {
+  const response = await app.inject({ method: "GET", url });
+
+  assert.equal(response.statusCode, expectedStatus, response.body);
+  return response.json<T>();
+}
+
 function writeCloudBindingForTest({
   localMasterInstanceId,
   now,
@@ -976,6 +1399,37 @@ async function dayClosePreview(businessDate: string) {
   );
 }
 
+async function salesReport(businessDate: string) {
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/reporting/sales?business_date=" + encodeURIComponent(businessDate) + "&business_day_cutover_time=04%3A00"
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json<SalesReport>();
+}
+
+async function getOrderSnapshot(orderId: string) {
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/orders/" + encodeURIComponent(orderId) + "/snapshot"
+  });
+
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json<OrderSnapshotResponse>();
+}
+
+async function createStorno(orderId: string, request: object, expectedStatus: number) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/orders/" + encodeURIComponent(orderId) + "/stornos",
+    payload: { request }
+  });
+
+  assert.equal(response.statusCode, expectedStatus, response.body);
+  return response.json<StornoResult>();
+}
+
 async function waitForPrintJob(jobId: string, predicate: (job: PrintJob) => boolean) {
   assert.notEqual(jobId, "");
 
@@ -995,7 +1449,7 @@ async function waitForPrintJob(jobId: string, predicate: (job: PrintJob) => bool
 function paymentRequest(
   requestId: string,
   paymentMethod: "CASH" | "CARD_MANUAL",
-  cash: { received_cash?: number; change_given?: number } = {}
+  cash: { received_cash?: number; change_given?: number; lines?: BasketLine[]; terminal_id?: string } = {}
 ) {
   return {
     request_id: requestId,
@@ -1006,7 +1460,7 @@ function paymentRequest(
   };
 }
 
-function basketLine(id: string, amount: number): BasketLine {
+function basketLine(id: string, amount: number, quantity = 1): BasketLine {
   return {
     id,
     product_id: "prod_" + id,
@@ -1020,8 +1474,8 @@ function basketLine(id: string, amount: number): BasketLine {
     station: "Bar",
     variants: [],
     unit_total: amount,
-    quantity: 1,
-    line_total: amount
+    quantity,
+    line_total: amount * quantity
   };
 }
 

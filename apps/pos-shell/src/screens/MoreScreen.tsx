@@ -10,6 +10,7 @@
   SaveIcon,
   SettingsIcon,
   UnlinkIcon,
+  Undo2Icon,
   WalletCardsIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -63,6 +64,7 @@ import type {
   TerminalPairingConfig
 } from "../lib/pos-types";
 import { CashCloseScreen } from "./CashCloseScreen";
+import { StornoScreen } from "./StornoScreen";
 
 type MoreScreenProps = {
   onNavigate: (screen: PosScreen) => void;
@@ -101,9 +103,16 @@ const moreItems = [
     tone: "bg-emerald-50 text-emerald-700",
     view: "cash-close",
   },
+  {
+    label: "Storno",
+    description: "Korrekturen",
+    icon: Undo2Icon,
+    tone: "bg-red-50 text-red-700",
+    view: "storno",
+  },
 ] as const;
 
-type MoreView = "menu" | "cash-close" | "local-master-settings" | "devices";
+type MoreView = "menu" | "cash-close" | "local-master-settings" | "devices" | "storno";
 
 export function MoreScreen({ onNavigate }: MoreScreenProps) {
   const [activeView, setActiveView] = useState<MoreView>("menu");
@@ -133,6 +142,10 @@ export function MoreScreen({ onNavigate }: MoreScreenProps) {
 
   if (activeView === "cash-close") {
     return <CashCloseScreen onBack={() => setActiveView("menu")} />;
+  }
+
+  if (activeView === "storno") {
+    return <StornoScreen onBack={() => setActiveView("menu")} />;
   }
 
   if (activeView === "local-master-settings") {

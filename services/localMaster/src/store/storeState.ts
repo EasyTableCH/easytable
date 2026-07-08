@@ -50,6 +50,68 @@ export type StoredDayClose = SavedDayClose & {
   preview: DayClosePreview;
 };
 
+export type OrderSnapshotPayment = {
+  payment_id: string;
+  request_id: string;
+  method: string;
+  amount: number;
+  terminal_id: string | null;
+  provider: string;
+  provider_transaction_id: string | null;
+  provider_status: string;
+  lifecycle_state: string;
+  paid_at: number;
+};
+
+export type FinalOrderSnapshot = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  snapshot_type: "PAID";
+  table_context: TableContext | null;
+  lines: BasketLine[];
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  payment: OrderSnapshotPayment;
+  terminal_id: string | null;
+  business_date: string;
+  created_at: number;
+};
+
+export type SalesLedgerEntryType =
+  | "SALE_COMPLETED"
+  | "PAYMENT_RECORDED"
+  | "ORDER_VOIDED"
+  | "ORDER_PARTIALLY_VOIDED"
+  | "REFUND_RECORDED";
+
+export type SalesLedgerEntry = {
+  id: string;
+  request_id: string;
+  entry_type: SalesLedgerEntryType;
+  order_id: string;
+  order_number: string;
+  payment_id: string | null;
+  original_entry_id: string | null;
+  line_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  product_category: string | null;
+  quantity: number;
+  gross_amount: number;
+  tax_amount: number;
+  payment_method: string | null;
+  terminal_id: string | null;
+  provider: string | null;
+  provider_transaction_id: string | null;
+  provider_refund_id: string | null;
+  provider_status: string | null;
+  reason: string | null;
+  business_date: string;
+  occurred_at: number;
+};
+
 export type PosOrderSnapshot = {
   id: string;
   order_number: string;
@@ -70,6 +132,8 @@ export const posOrders = readState<PosOrderSnapshot[]>("posOrders", []);
 export const kdsTickets = readState<KdsTicket[]>("kdsTickets", []);
 export const stationPickups = readState<StationPickup[]>("stationPickups", []);
 export const payments = readState<LocalPayment[]>("payments", []);
+export const orderSnapshots = readState<FinalOrderSnapshot[]>("orderSnapshots", []);
+export const salesLedgerEntries = readState<SalesLedgerEntry[]>("salesLedgerEntries", []);
 export const dayCloses = new Map<string, StoredDayClose>(
   readState<Array<[string, StoredDayClose]>>("dayCloses", [])
 );
@@ -103,6 +167,14 @@ export function persistStationPickups() {
 
 export function persistPayments() {
   writeState("payments", payments);
+}
+
+export function persistOrderSnapshots() {
+  writeState("orderSnapshots", orderSnapshots);
+}
+
+export function persistSalesLedgerEntries() {
+  writeState("salesLedgerEntries", salesLedgerEntries);
 }
 
 export function persistDayCloses() {

@@ -1,4 +1,5 @@
 import { getOpenTableOrderBasket, getTableLayout, listKdsTickets, listStationPickups } from "./store.js";
+import { listPendingOutboxEvents, markOutboxEventsFailed, markOutboxEventsSynced } from "./store/commandStore.js";
 import type { BasketLine } from "./types.js";
 
 type RelayRuntimeBinding = {
@@ -79,12 +80,77 @@ export async function pushOperationsToRelay(binding: RelayRuntimeBinding): Promi
       return false;
     }
 
+    await pushFinancialOutboxToRelay(binding);
     return true;
   } catch (error) {
     console.warn("Relay operations sync failed.", error);
     return false;
   }
 }
+
+async function pushFinancialOutboxToRelay(binding: RelayRuntimeBinding) {
+  if (!binding.tenant_id || !binding.location_id || !binding.local_master_instance_id || !binding.relay_base_url || !binding.relay_token) {
+    return false;
+  }
+
+  const events = listPendingOutboxEvents(200).filter((event) => financialEventTypes.has(event.event_type));
+  if (events.length === 0) {
+    return true;
+  }
+
+  try {
+    const response = await fetch(binding.relay_base_url.replace(/\/$/, "") + "/api/local-master/financial-events", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + binding.relay_token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tenant_id: binding.tenant_id,
+        location_id: binding.location_id,
+        local_master_instance_id: binding.local_master_instance_id,
+        events: events.map((event) => ({
+          id: event.id,
+          event_type: event.event_type,
+          aggregate_id: event.aggregate_id,
+          payload: event.payload,
+          created_at: event.created_at
+        }))
+      })
+    });
+
+    if (!response.ok) {
+      const error = await readRelayError(response);
+      markOutboxEventsFailed(events.map((event) => event.id), error);
+      console.warn("Relay financial sync failed.", response.status, error);
+      return false;
+    }
+
+    const payload = await response.json() as {
+      accepted_event_ids?: string[];
+      failed_events?: Array<{ id: string; error: string }>;
+    };
+    const accepted = payload.accepted_event_ids ?? [];
+    markOutboxEventsSynced(accepted);
+    for (const failed of payload.failed_events ?? []) {
+      markOutboxEventsFailed([failed.id], failed.error);
+    }
+    return (payload.failed_events ?? []).length === 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    markOutboxEventsFailed(events.map((event) => event.id), message);
+    console.warn("Relay financial sync failed.", error);
+    return false;
+  }
+}
+
+const financialEventTypes = new Set([
+  "ORDER_SNAPSHOT_RECORDED",
+  "SALES_LEDGER_UPDATED",
+  "ORDER_STORNO_RECORDED",
+  "PAYMENT_COMPLETED",
+  "DAY_CLOSE_SAVED"
+]);
 
 function calculateTotals(lines: BasketLine[]) {
   const total = lines.reduce((sum, line) => sum + line.line_total, 0);
