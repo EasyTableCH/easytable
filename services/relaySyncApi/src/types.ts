@@ -257,6 +257,13 @@ export type WalleePaymentProfile = {
   has_webhook_signature_key: boolean;
   mode: WalleePaymentMode;
   enabled: boolean;
+  config_version: number;
+  config_delivery: {
+    status: "pending" | "delivered" | "accepted" | "failed" | "unpublished";
+    active_local_master_version: number | null;
+    error: string | null;
+    updated_at: string | null;
+  };
   created_at: string;
   updated_at: string;
 };
@@ -294,30 +301,22 @@ export type WalleePaymentTerminalCreateRequest = {
 export type WalleePaymentTerminalUpdateRequest = Partial<WalleePaymentTerminalCreateRequest>;
 
 export type LocalMasterPaymentConfig = {
+  config_version: number;
+  checksum: string;
+  tenant_id: string;
+  location_id: string;
+  local_master_instance_id: string;
   wallee: {
     enabled: boolean;
     mode: WalleePaymentMode;
     profile_id: string;
     space_id: string;
+    application_user_id: string;
+    authentication_key: string;
+    confirmation_policy: "EXPLICIT";
+    receipt_policy: "FETCH_AND_QUEUE_UNPRINTED";
     terminals: WalleePaymentTerminal[];
   } | null;
-};
-
-export type LocalMasterWalleeTerminalPaymentRequest = {
-  request_id: string;
-  amount: number;
-  currency?: string;
-  terminal_id?: string | null;
-  lines?: unknown[];
-  table_context?: unknown;
-};
-
-export type LocalMasterWalleeTerminalPaymentResponse = {
-  provider: "WALLEE_CLOUD_TILL";
-  provider_transaction_id: string | null;
-  provider_status: "AUTHORIZED" | "DECLINED" | "CANCELLED" | "TIMEOUT" | "UNKNOWN";
-  authorized: boolean;
-  failure_reason: string | null;
 };
 
 export type StaffOrderSnapshotRelayRequest = {

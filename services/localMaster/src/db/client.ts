@@ -172,6 +172,119 @@ function migrateLocalMasterSchema(sqliteClient: Database.Database) {
 }
 
 function migrateFinancialTables(sqliteClient: Database.Database) {
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS local_wallee_config (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    location_id TEXT NOT NULL,
+    local_master_instance_id TEXT NOT NULL,
+    relay_profile_id TEXT NOT NULL,
+    config_version INTEGER NOT NULL,
+    space_id TEXT NOT NULL,
+    application_user_id TEXT NOT NULL,
+    authentication_key_encrypted TEXT NOT NULL,
+    confirmation_policy TEXT NOT NULL DEFAULT 'EXPLICIT',
+    receipt_policy TEXT NOT NULL DEFAULT 'FETCH_AND_QUEUE_UNPRINTED',
+    status TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    validation_error TEXT,
+    activated_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_local_wallee_config_version ON local_wallee_config(tenant_id, location_id, config_version)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_local_wallee_config_active ON local_wallee_config(status, updated_at)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS local_wallee_terminals (
+    id TEXT PRIMARY KEY,
+    config_id TEXT NOT NULL REFERENCES local_wallee_config(id) ON DELETE CASCADE,
+    relay_terminal_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    terminal_id TEXT,
+    terminal_identifier TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_local_wallee_terminal_config_relay ON local_wallee_terminals(config_id, relay_terminal_id)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_local_wallee_terminal_active ON local_wallee_terminals(config_id, is_active, is_default)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS local_wallee_config_audit (
+    id TEXT PRIMARY KEY,
+    config_version INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    error TEXT,
+    created_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_local_wallee_config_audit_version ON local_wallee_config_audit(config_version, created_at)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS payment_attempts (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    payload_fingerprint TEXT NOT NULL,
+    order_id TEXT,
+    payment_id TEXT,
+    amount INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    method TEXT NOT NULL,
+    wallee_terminal_config_id TEXT,
+    merchant_reference TEXT NOT NULL,
+    provider_transaction_id TEXT,
+    provider_state TEXT,
+    lifecycle_state TEXT NOT NULL,
+    reconciliation_required INTEGER NOT NULL DEFAULT 0,
+    failure_reason TEXT,
+    request_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    completed_at INTEGER
+  )`).run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_attempt_request ON payment_attempts(request_id)").run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_attempt_merchant_reference ON payment_attempts(merchant_reference)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_payment_attempt_provider_transaction ON payment_attempts(provider_transaction_id)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_payment_attempt_recovery ON payment_attempts(reconciliation_required, lifecycle_state, updated_at)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS payment_events (
+    id TEXT PRIMARY KEY,
+    payment_attempt_id TEXT NOT NULL REFERENCES payment_attempts(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    provider_state TEXT,
+    payload_json TEXT,
+    created_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_payment_events_attempt ON payment_events(payment_attempt_id, created_at)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS payment_receipts (
+    id TEXT PRIMARY KEY,
+    payment_attempt_id TEXT NOT NULL REFERENCES payment_attempts(id) ON DELETE CASCADE,
+    provider_transaction_id TEXT NOT NULL,
+    receipt_type TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    data_base64 TEXT NOT NULL,
+    printed_by_provider INTEGER NOT NULL DEFAULT 0,
+    print_job_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_receipt_attempt_type ON payment_receipts(payment_attempt_id, receipt_type)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_payment_receipt_transaction ON payment_receipts(provider_transaction_id)").run();
+
+  sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS payment_recovery_jobs (
+    id TEXT PRIMARY KEY,
+    payment_attempt_id TEXT NOT NULL REFERENCES payment_attempts(id) ON DELETE CASCADE,
+    operation TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at INTEGER NOT NULL,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  sqliteClient.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_recovery_attempt_operation ON payment_recovery_jobs(payment_attempt_id, operation)").run();
+  sqliteClient.prepare("CREATE INDEX IF NOT EXISTS idx_payment_recovery_pending ON payment_recovery_jobs(status, next_attempt_at)").run();
+
   sqliteClient.prepare(`CREATE TABLE IF NOT EXISTS order_snapshots (
     id TEXT PRIMARY KEY,
     order_id TEXT NOT NULL,

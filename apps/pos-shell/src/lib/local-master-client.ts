@@ -2,7 +2,8 @@ import type {
   BasketLine,
   CatalogOutputStation,
   CloudBinding,
-  CompletedMockPayment,
+  PaymentResult,
+  PaymentAttemptStatus,
   CreateOrderStornoRequest,
   CreateOrderSnapshotRequest,
   DayClosePreview,
@@ -10,7 +11,7 @@ import type {
   LocalDevice,
   LocalDeviceInput,
   LocalMasterIdentity,
-  MockPaymentRequest,
+  PaymentRequest,
   OrderSnapshotListItem,
   OrderSnapshotResponse,
   PosDeviceBinding,
@@ -258,17 +259,25 @@ export function createOrderSnapshot(request: CreateOrderSnapshotRequest) {
   return writeJson<CreatedOrderSnapshot>("/api/order-snapshots", { request });
 }
 
-export function completeMockPayment(
+export function completeCashPayment(
   request: {
     lines: BasketLine[];
     table_context: TableContext | null;
-  } & MockPaymentRequest,
+  } & PaymentRequest,
 ) {
-  return writeJson<CompletedMockPayment>("/api/mock-payments/complete", { request });
+  return writeJson<PaymentResult>("/api/payments/cash/complete", { request });
 }
 
 export function startWalleeTerminalPayment(request: WalleeTerminalPaymentRequest) {
-  return writeJson<CompletedMockPayment>("/api/payments/wallee-terminal/start", { request });
+  return writeJson<PaymentResult>("/api/payments/wallee-terminal/start", { request });
+}
+
+export function getPaymentAttempt(attemptId: string) {
+  return readJson<PaymentAttemptStatus>("/api/payments/attempts/" + encodeURIComponent(attemptId));
+}
+
+export function reconcilePaymentAttempt(attemptId: string) {
+  return writeJson<PaymentAttemptStatus>("/api/payments/attempts/" + encodeURIComponent(attemptId) + "/reconcile", { request: {} });
 }
 
 export function loadPosSettings() {

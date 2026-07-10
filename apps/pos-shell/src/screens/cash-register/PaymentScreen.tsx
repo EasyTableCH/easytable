@@ -8,14 +8,14 @@ import logoUrl from "@easytable/ui/assets/Logo table.svg";
 import chipUrl from "../../assets/Chip.svg";
 import { TouchNumberPad } from "../../components/TouchNumberPad";
 import { formatChf } from "../../lib/money";
-import type { MockPaymentMethod, MockPaymentRequest } from "../../lib/pos-types";
+import type { PaymentMethod, PaymentRequest } from "../../lib/pos-types";
 
 type PaymentScreenProps = {
   total: number;
   isSubmitting: boolean;
   isWalleeTerminalEnabled: boolean;
   onCancel: () => void;
-  onSelectMethod: (payment: MockPaymentRequest) => void;
+  onSelectMethod: (payment: PaymentRequest) => void;
 };
 
 type PaymentView = "methods" | "cash";
@@ -39,7 +39,7 @@ export function PaymentScreen({
   const changeAmount = Math.max(receivedAmount - total, 0);
   const canCompleteCashPayment = receivedAmount >= total && !isSubmitting;
 
-  function handleMethodSelect(method: MockPaymentMethod) {
+  function handleMethodSelect(method: PaymentMethod) {
     if (method === "CASH") {
       setReceivedAmount(0);
       setPaymentView("cash");
@@ -225,13 +225,13 @@ export function PaymentScreen({
 }
 
 type PaymentMethodCardProps = {
-  method: MockPaymentMethod;
+  method: PaymentMethod;
   title: string;
   eyebrow: string;
   description: string;
   dark?: boolean;
   disabled: boolean;
-  onSelectMethod: (method: MockPaymentMethod) => void;
+  onSelectMethod: (method: PaymentMethod) => void;
 };
 
 function PaymentMethodCard({

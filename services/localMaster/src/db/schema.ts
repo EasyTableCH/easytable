@@ -415,3 +415,147 @@ export const commandInbox = sqliteTable(
     index("idx_command_inbox_status").on(table.status, table.updatedAt)
   ]
 );
+
+export const localWalleeConfig = sqliteTable(
+  "local_wallee_config",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    locationId: text("location_id").notNull(),
+    localMasterInstanceId: text("local_master_instance_id").notNull(),
+    relayProfileId: text("relay_profile_id").notNull(),
+    configVersion: integer("config_version").notNull(),
+    spaceId: text("space_id").notNull(),
+    applicationUserId: text("application_user_id").notNull(),
+    authenticationKeyEncrypted: text("authentication_key_encrypted").notNull(),
+    confirmationPolicy: text("confirmation_policy").notNull().default("EXPLICIT"),
+    receiptPolicy: text("receipt_policy").notNull().default("FETCH_AND_QUEUE_UNPRINTED"),
+    status: text("status").notNull(),
+    checksum: text("checksum").notNull(),
+    validationError: text("validation_error"),
+    activatedAt: integer("activated_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_local_wallee_config_version").on(table.tenantId, table.locationId, table.configVersion),
+    index("idx_local_wallee_config_active").on(table.status, table.updatedAt)
+  ]
+);
+
+export const localWalleeTerminals = sqliteTable(
+  "local_wallee_terminals",
+  {
+    id: text("id").primaryKey(),
+    configId: text("config_id").notNull().references(() => localWalleeConfig.id, { onDelete: "cascade" }),
+    relayTerminalId: text("relay_terminal_id").notNull(),
+    displayName: text("display_name").notNull(),
+    terminalId: text("terminal_id"),
+    terminalIdentifier: text("terminal_identifier"),
+    isDefault: integer("is_default").notNull().default(0),
+    isActive: integer("is_active").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_local_wallee_terminal_config_relay").on(table.configId, table.relayTerminalId),
+    index("idx_local_wallee_terminal_active").on(table.configId, table.isActive, table.isDefault)
+  ]
+);
+
+export const localWalleeConfigAudit = sqliteTable(
+  "local_wallee_config_audit",
+  {
+    id: text("id").primaryKey(),
+    configVersion: integer("config_version").notNull(),
+    action: text("action").notNull(),
+    status: text("status").notNull(),
+    checksum: text("checksum").notNull(),
+    error: text("error"),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => [index("idx_local_wallee_config_audit_version").on(table.configVersion, table.createdAt)]
+);
+
+export const paymentAttempts = sqliteTable(
+  "payment_attempts",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    payloadFingerprint: text("payload_fingerprint").notNull(),
+    orderId: text("order_id"),
+    paymentId: text("payment_id"),
+    amount: integer("amount").notNull(),
+    currency: text("currency").notNull(),
+    method: text("method").notNull(),
+    walleeTerminalConfigId: text("wallee_terminal_config_id"),
+    merchantReference: text("merchant_reference").notNull(),
+    providerTransactionId: text("provider_transaction_id"),
+    providerState: text("provider_state"),
+    lifecycleState: text("lifecycle_state").notNull(),
+    reconciliationRequired: integer("reconciliation_required").notNull().default(0),
+    failureReason: text("failure_reason"),
+    requestJson: text("request_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    completedAt: integer("completed_at")
+  },
+  (table) => [
+    uniqueIndex("idx_payment_attempt_request").on(table.requestId),
+    uniqueIndex("idx_payment_attempt_merchant_reference").on(table.merchantReference),
+    index("idx_payment_attempt_provider_transaction").on(table.providerTransactionId),
+    index("idx_payment_attempt_recovery").on(table.reconciliationRequired, table.lifecycleState, table.updatedAt)
+  ]
+);
+
+export const paymentEvents = sqliteTable(
+  "payment_events",
+  {
+    id: text("id").primaryKey(),
+    paymentAttemptId: text("payment_attempt_id").notNull().references(() => paymentAttempts.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    providerState: text("provider_state"),
+    payloadJson: text("payload_json"),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => [index("idx_payment_events_attempt").on(table.paymentAttemptId, table.createdAt)]
+);
+
+export const paymentReceipts = sqliteTable(
+  "payment_receipts",
+  {
+    id: text("id").primaryKey(),
+    paymentAttemptId: text("payment_attempt_id").notNull().references(() => paymentAttempts.id, { onDelete: "cascade" }),
+    providerTransactionId: text("provider_transaction_id").notNull(),
+    receiptType: text("receipt_type").notNull(),
+    mimeType: text("mime_type").notNull(),
+    dataBase64: text("data_base64").notNull(),
+    printedByProvider: integer("printed_by_provider").notNull().default(0),
+    printJobId: text("print_job_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_payment_receipt_attempt_type").on(table.paymentAttemptId, table.receiptType),
+    index("idx_payment_receipt_transaction").on(table.providerTransactionId)
+  ]
+);
+
+export const paymentRecoveryJobs = sqliteTable(
+  "payment_recovery_jobs",
+  {
+    id: text("id").primaryKey(),
+    paymentAttemptId: text("payment_attempt_id").notNull().references(() => paymentAttempts.id, { onDelete: "cascade" }),
+    operation: text("operation").notNull(),
+    status: text("status").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at").notNull(),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("idx_payment_recovery_attempt_operation").on(table.paymentAttemptId, table.operation),
+    index("idx_payment_recovery_pending").on(table.status, table.nextAttemptAt)
+  ]
+);

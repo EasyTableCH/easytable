@@ -80,7 +80,7 @@ export type CatalogOutputStation = {
 
 export type LocalDeviceType = "PRINTER" | "KDS_DISPLAY";
 
-export type LocalDeviceProvider = "manual" | "windows" | "escpos" | "browser" | "simulator";
+export type LocalDeviceProvider = "manual" | "windows" | "escpos" | "browser";
 
 export type LocalDevice = {
   id: string;
@@ -135,7 +135,7 @@ export type PrintLog = {
   created_at: number;
 };
 
-export type PrintJobStatus = "PENDING" | "PRINTING" | "PRINTED" | "SIMULATED" | "FAILED";
+export type PrintJobStatus = "PENDING" | "PRINTING" | "PRINTED" | "FAILED";
 
 export type PrintJob = {
   id: string;
@@ -230,20 +230,26 @@ export type CreateOrderSnapshotRequest = {
   table_context: TableContext;
 };
 
-export type MockPaymentMethod = "CASH" | "CARD_MANUAL" | "WALLEE_TERMINAL";
+export type PaymentMethod = "CASH" | "WALLEE_TERMINAL";
 
 export type PaymentLifecycleState =
   | "payment_started"
+  | "provider_pending"
   | "provider_authorized"
+  | "provider_completed"
   | "local_recorded"
+  | "receipt_pending"
   | "receipt_queued"
   | "completed"
+  | "declined"
+  | "cancelled"
   | "failed"
-  | "reversal_required";
+  | "reversal_required"
+  | "reconciliation_required";
 
-export type MockPaymentRequest = {
+export type PaymentRequest = {
   request_id?: string;
-  payment_method: MockPaymentMethod;
+  payment_method: PaymentMethod;
   received_cash?: number;
   change_given?: number;
   terminal_id?: string;
@@ -253,15 +259,17 @@ export type WalleeTerminalPaymentRequest = {
   request_id: string;
   lines: BasketLine[];
   table_context: TableContext | null;
-  terminal_id?: string;
+  wallee_terminal_config_id?: string;
+  pos_terminal_id?: string;
 };
 
-export type CompletedMockPayment = {
+export type PaymentResult = {
   order_id: string;
   order_number: string;
   payment_id: string;
+  payment_attempt_id: string | null;
   request_id: string;
-  payment_method: MockPaymentMethod | string;
+  payment_method: PaymentMethod | string;
   amount: number;
   received_cash: number | null;
   change_given: number | null;
@@ -272,11 +280,23 @@ export type CompletedMockPayment = {
   provider_transaction_id: string | null;
   provider_status: string;
   lifecycle_state: PaymentLifecycleState;
+  reconciliation_required: boolean;
   receipt_print_job_id: string | null;
   failure_reason: string | null;
   created_at: number;
   updated_at: number;
   completed_at: number | null;
+};
+
+export type PaymentAttemptStatus = {
+  payment_attempt_id: string;
+  payment_id: string | null;
+  order_id: string | null;
+  provider_transaction_id: string | null;
+  provider_state: string | null;
+  lifecycle_state: PaymentLifecycleState;
+  reconciliation_required: boolean;
+  failure_reason: string | null;
 };
 
 export type OrderSnapshotResponse = {

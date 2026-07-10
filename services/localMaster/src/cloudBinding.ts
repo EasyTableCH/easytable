@@ -9,6 +9,7 @@ import { pushCatalogToRelay } from "./relayCatalogSync.js";
 import { pushTableLayoutToRelay } from "./relayLayoutSync.js";
 import { pushOperationsToRelay } from "./relayOperationsSync.js";
 import { readLocalSiteConfig, saveLocalSiteConfigFromBootstrap } from "./store/localSiteStore.js";
+import { pullAndActivateWalleeConfig } from "./store/walleeConfigStore.js";
 import type { CloudBinding, CloudPairRequest, CloudPairResponse, LocalMasterBootstrap } from "./types.js";
 
 const cloudBindingStateKey = "localMaster.cloudBinding";
@@ -196,6 +197,13 @@ async function bootstrapFromRelay(binding: StoredCloudBinding) {
     writeLocalState(bootstrapStateKey, bootstrap);
     saveLocalSiteConfigFromBootstrap(bootstrap);
     applyBootstrapOutputStations(bootstrap.output_stations);
+    await pullAndActivateWalleeConfig({
+      tenant_id: binding.tenant_id!,
+      location_id: binding.location_id!,
+      local_master_instance_id: binding.local_master_instance_id!,
+      relay_base_url: binding.relay_base_url,
+      relay_token: binding.relay_token
+    });
     writeStoredBinding({
       ...binding,
       status: "PAIRED",

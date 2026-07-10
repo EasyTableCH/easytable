@@ -204,6 +204,13 @@ export async function pairLocalMaster(request: LocalMasterPairRequest): Promise<
       .where(eq(localMasterPairingSessions.id, session.id));
   });
 
+  try {
+    const { republishWalleeConfig } = await import("./walleePaymentStore.js");
+    await republishWalleeConfig(session.tenantId, session.locationId);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.statusCode !== 404) throw error;
+  }
+
   return {
     tenant_id: session.tenantId,
     location_id: session.locationId,

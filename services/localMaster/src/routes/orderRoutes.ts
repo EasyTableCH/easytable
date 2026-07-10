@@ -3,9 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { getRelayRuntimeBinding } from "../cloudBinding.js";
 import { pushOperationsToRelay } from "../relayOperationsSync.js";
 import { broadcast } from "../realtime.js";
-import { completeMockPaymentSchema, createOrderSchema, createOrderSnapshotSchema } from "../schemas.js";
+import { completePaymentSchema, createOrderSchema, createOrderSnapshotSchema } from "../schemas.js";
 import {
-  completeMockPayment,
+  completeCashPayment,
   createOrderStorno,
   createOrder,
   createOrderSnapshot,
@@ -14,7 +14,7 @@ import {
   startWalleeTerminalPayment
 } from "../store.js";
 import type {
-  CompleteMockPaymentRequest,
+  CompleteCashPaymentRequest,
   CreateOrderStornoRequest,
   CreateOrderSnapshotRequest,
   OrderDraft,
@@ -69,11 +69,11 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     }
   );
 
-  app.post<{ Body: PosRequestBody<CompleteMockPaymentRequest> }>(
-    "/api/mock-payments/complete",
-    { schema: completeMockPaymentSchema },
+  app.post<{ Body: PosRequestBody<CompleteCashPaymentRequest> }>(
+    "/api/payments/cash/complete",
+    { schema: completePaymentSchema },
     async (request, reply) => {
-      const result = completeMockPayment(request.body.request);
+      const result = completeCashPayment(request.body.request);
       const { payment, table } = result;
 
       if (!result.replayed) {
@@ -93,7 +93,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
 
   app.post<{ Body: PosRequestBody<StartWalleeTerminalPaymentRequest> }>(
     "/api/payments/wallee-terminal/start",
-    { schema: completeMockPaymentSchema },
+    { schema: completePaymentSchema },
     async (request, reply) => {
       const result = await startWalleeTerminalPayment(request.body.request);
       const { payment, table } = result;

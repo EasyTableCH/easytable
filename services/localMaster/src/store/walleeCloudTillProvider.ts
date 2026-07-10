@@ -1,59 +1,159 @@
-import { getRelayRuntimeBinding } from "../cloudBinding.js";
 import type { PaymentProviderRequest, PaymentProviderResult } from "./paymentProviderTypes.js";
-
-type RelayWalleePaymentResponse = {
-  provider: "WALLEE_CLOUD_TILL";
-  provider_transaction_id: string | null;
-  provider_status: PaymentProviderResult["provider_status"];
-  authorized: boolean;
-  failure_reason: string | null;
-};
+import {
+  beginPaymentAttempt,
+  ensurePaymentRecoveryJob,
+  recordPaymentEvent,
+  storePaymentReceipts,
+  updatePaymentAttempt
+} from "./paymentAttemptStore.js";
+import { selectActiveWalleeTerminal } from "./walleeConfigStore.js";
+import { mapWalleeProviderState, WalleeApiError, WalleeClient, type WalleeTransaction } from "./walleeClient.js";
 
 export async function startWalleeCloudTillPayment(request: PaymentProviderRequest): Promise<PaymentProviderResult> {
-  const binding = getRelayRuntimeBinding();
-
-  if (!binding) {
-    return providerFailure("UNKNOWN", "LocalMaster is not paired with relay for wallee terminal payments.");
+  const attemptHandle = beginPaymentAttempt(request.request, request.amount);
+  const attempt = attemptHandle.attempt;
+  if (attemptHandle.mode === "replay") {
+    const successful = attempt.lifecycleState === "provider_authorized" || attempt.lifecycleState === "provider_completed" || attempt.lifecycleState === "completed";
+    return {
+      provider: "WALLEE_CLOUD_TILL",
+      payment_attempt_id: attempt.id,
+      provider_transaction_id: attempt.providerTransactionId,
+      provider_status: attempt.providerState ?? "UNKNOWN",
+      lifecycle_state: attempt.lifecycleState as PaymentProviderResult["lifecycle_state"],
+      authorized: successful,
+      reconciliation_required: attempt.reconciliationRequired === 1,
+      failure_reason: attempt.failureReason
+    };
   }
 
-  const response = await fetch(binding.relay_base_url.replace(/\/$/, "") + "/api/local-masters/payments/wallee-terminal/start", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + binding.relay_token,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      request_id: request.request_id,
-      amount: request.amount,
+  const { config, terminal } = selectActiveWalleeTerminal(request.request.wallee_terminal_config_id);
+  const client = new WalleeClient(config.credentials);
+  let transactionId: string | null = null;
+
+  try {
+    let transaction = await client.createTransaction({
+      merchantReference: attempt.merchantReference,
       currency: "CHF",
-      terminal_id: request.terminal_id,
-      lines: request.lines,
-      table_context: request.table_context
-    })
-  });
+      language: "de-CH",
+      amount: request.amount,
+      lines: request.lines
+    });
+    transactionId = String(transaction.id);
+    updatePaymentAttempt(attempt.id, {
+      providerTransactionId: transactionId,
+      providerState: transaction.state ?? "CREATE",
+      lifecycleState: "provider_pending"
+    });
+    recordPaymentEvent(attempt.id, "PROVIDER_TRANSACTION_CREATED", transaction.state ?? "CREATE", transaction);
 
-  if (!response.ok) {
-    return providerFailure("UNKNOWN", await readRelayError(response));
+    if (config.confirmationPolicy === "EXPLICIT") {
+      transaction = await client.confirmTransaction(transaction);
+      updatePaymentAttempt(attempt.id, { providerState: transaction.state ?? "CONFIRMED", lifecycleState: "provider_pending" });
+      recordPaymentEvent(attempt.id, "PROVIDER_TRANSACTION_CONFIRMED", transaction.state ?? "CONFIRMED", transaction);
+    }
+
+    const maxAttempts = positiveInteger(process.env.WALLEE_CLOUD_TILL_LONG_POLL_ATTEMPTS, 3);
+    let finalTransaction: WalleeTransaction | null = null;
+    for (let pollAttempt = 0; pollAttempt < maxAttempts; pollAttempt += 1) {
+      const result = await client.performTerminalTransaction(transactionId, terminal, "de-CH");
+      const mapped = mapWalleeProviderState(result.state);
+      recordPaymentEvent(attempt.id, result.state === "PENDING" ? "PROVIDER_LONG_POLL_TIMEOUT" : "PROVIDER_TERMINAL_RESULT", result.state ?? null, result);
+      updatePaymentAttempt(attempt.id, { providerState: mapped.providerState, lifecycleState: mapped.lifecycleState });
+      if (mapped.final) {
+        finalTransaction = result as WalleeTransaction;
+        break;
+      }
+    }
+
+    if (!finalTransaction) {
+      finalTransaction = await client.readTransaction(transactionId);
+      recordPaymentEvent(attempt.id, "PROVIDER_TRANSACTION_READ", finalTransaction.state ?? null, finalTransaction);
+    }
+
+    const mapped = mapWalleeProviderState(finalTransaction.state);
+    if (!mapped.final) {
+      updatePaymentAttempt(attempt.id, {
+        providerState: mapped.providerState,
+        lifecycleState: "reconciliation_required",
+        reconciliationRequired: true,
+        failureReason: "Wallee transaction has no final state yet."
+      });
+      ensurePaymentRecoveryJob(attempt.id, "RECONCILE");
+      return providerResult(attempt.id, transactionId, mapped.providerState, "reconciliation_required", false, true, "Wallee transaction requires reconciliation.");
+    }
+
+    updatePaymentAttempt(attempt.id, {
+      providerState: mapped.providerState,
+      lifecycleState: mapped.lifecycleState,
+      reconciliationRequired: false,
+      failureReason: mapped.successful ? null : "Wallee terminal returned " + mapped.providerState + "."
+    });
+
+    if (mapped.successful && config.receiptPolicy === "FETCH_AND_QUEUE_UNPRINTED") {
+      try {
+        const receipts = await client.fetchReceipts(transactionId);
+        storePaymentReceipts(attempt.id, transactionId, receipts);
+        recordPaymentEvent(attempt.id, "PROVIDER_RECEIPTS_FETCHED", mapped.providerState, { count: receipts.length });
+      } catch (error) {
+        ensurePaymentRecoveryJob(attempt.id, "FETCH_RECEIPTS");
+        recordPaymentEvent(attempt.id, "PROVIDER_RECEIPTS_PENDING", mapped.providerState, { error: safeError(error) });
+      }
+    }
+
+    if (mapped.successful) ensurePaymentRecoveryJob(attempt.id, "RECONCILE");
+
+    return providerResult(
+      attempt.id,
+      transactionId,
+      mapped.providerState,
+      mapped.lifecycleState,
+      mapped.successful,
+      false,
+      mapped.successful ? null : "Wallee terminal returned " + mapped.providerState + "."
+    );
+  } catch (error) {
+    const message = safeError(error);
+    const retryable = transactionId !== null && (!(error instanceof WalleeApiError) || error.status === 0 || error.status === 409 || error.status === 542 || error.status === 543 || error.status >= 500);
+    const lifecycleState = retryable ? "reconciliation_required" : "failed";
+    updatePaymentAttempt(attempt.id, {
+      providerTransactionId: transactionId,
+      lifecycleState,
+      reconciliationRequired: retryable,
+      failureReason: message
+    });
+    recordPaymentEvent(attempt.id, "PROVIDER_ERROR", null, { error: message });
+    if (retryable) ensurePaymentRecoveryJob(attempt.id, "RECONCILE");
+    return providerResult(attempt.id, transactionId, "UNKNOWN", lifecycleState, false, retryable, message);
   }
-
-  return (await response.json()) as RelayWalleePaymentResponse;
 }
 
-function providerFailure(providerStatus: PaymentProviderResult["provider_status"], failureReason: string): PaymentProviderResult {
+function providerResult(
+  attemptId: string,
+  transactionId: string | null,
+  providerStatus: string,
+  lifecycleState: PaymentProviderResult["lifecycle_state"],
+  authorized: boolean,
+  reconciliationRequired: boolean,
+  failureReason: string | null
+): PaymentProviderResult {
   return {
     provider: "WALLEE_CLOUD_TILL",
-    provider_transaction_id: null,
+    payment_attempt_id: attemptId,
+    provider_transaction_id: transactionId,
     provider_status: providerStatus,
-    authorized: false,
+    lifecycle_state: lifecycleState,
+    authorized,
+    reconciliation_required: reconciliationRequired,
     failure_reason: failureReason
   };
 }
 
-async function readRelayError(response: Response) {
-  try {
-    const payload = (await response.json()) as { error?: string };
-    return payload.error ?? "Wallee relay payment failed.";
-  } catch {
-    return (await response.text().catch(() => "")) || "Wallee relay payment failed.";
-  }
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function safeError(error: unknown) {
+  if (error instanceof WalleeApiError) return error.message + (error.responseBody ? " " + error.responseBody.slice(0, 500) : "");
+  return error instanceof Error ? error.message : String(error);
 }

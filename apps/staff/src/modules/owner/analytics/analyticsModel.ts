@@ -21,7 +21,6 @@ export type AnalyticsViewModel = {
   stornoTotal: number;
   paymentTotals: {
     cash: number;
-    cardManual: number;
     walleeTerminal: number;
   };
   revenueSeries: Array<{ date: string; gross: number; storno: number }>;
@@ -101,13 +100,11 @@ export function buildAnalyticsViewModel(reports: SalesReport[], filters: Analyti
     stornoTotal: Math.abs(sum(stornoEntries, "gross_amount")),
     paymentTotals: {
       cash: sum(paymentEntries.filter((entry) => entry.payment_method === "CASH"), "gross_amount"),
-      cardManual: sum(paymentEntries.filter((entry) => entry.payment_method === "CARD_MANUAL"), "gross_amount"),
       walleeTerminal: sum(paymentEntries.filter((entry) => entry.payment_method === "WALLEE_TERMINAL"), "gross_amount")
     },
     revenueSeries: buildRevenueSeries(saleEntries),
     paymentSeries: [
       { method: "Cash", total: sum(paymentEntries.filter((entry) => entry.payment_method === "CASH"), "gross_amount") },
-      { method: "Karte", total: sum(paymentEntries.filter((entry) => entry.payment_method === "CARD_MANUAL"), "gross_amount") },
       { method: "Wallee", total: sum(paymentEntries.filter((entry) => entry.payment_method === "WALLEE_TERMINAL"), "gross_amount") }
     ].filter((entry) => entry.total !== 0),
     productRows,

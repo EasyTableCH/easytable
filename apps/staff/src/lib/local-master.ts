@@ -186,7 +186,6 @@ export type SalesReport = {
   item_count: number;
   payment_totals: {
     cash: number;
-    card_manual: number;
     wallee_terminal: number;
   };
   product_sales: Array<{
@@ -700,7 +699,6 @@ function emptySalesReport(businessDate: string): SalesReport {
     item_count: 0,
     payment_totals: {
       cash: 0,
-      card_manual: 0,
       wallee_terminal: 0
     },
     product_sales: [],

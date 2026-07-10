@@ -1,4 +1,4 @@
-import type { BasketLine, CompletedMockPayment } from "../types.js";
+import type { BasketLine, PaymentResult } from "../types.js";
 import type { PosOrderSnapshot, StoredDayClose } from "./storeState.js";
 
 const ESC = "\x1b";
@@ -67,7 +67,7 @@ export function stripEscPosControlCodes(value: string) {
     .trim();
 }
 
-export function formatReceiptPrintBody(order: PosOrderSnapshot, payment: CompletedMockPayment) {
+export function formatReceiptPrintBody(order: PosOrderSnapshot, payment: PaymentResult) {
   return [
     "EasyTable Beleg",
     "Auftrag: " + order.order_number,

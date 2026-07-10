@@ -15,6 +15,16 @@ import { ApiError } from "./store/errors.js";
 export async function buildServer() {
   const app = Fastify({ logger: true });
 
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+    try {
+      const rawBody = typeof body === "string" ? body : body.toString("utf8");
+      (request as typeof request & { rawBody?: string }).rawBody = rawBody;
+      done(null, rawBody.length === 0 ? {} : JSON.parse(rawBody));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
+
   await initializeDatabase();
 
   await app.register(cors, {

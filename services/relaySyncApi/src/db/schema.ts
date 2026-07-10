@@ -301,6 +301,7 @@ export const walleePaymentProfiles = pgTable("wallee_payment_profiles", {
   webhookSignatureKey: text("webhook_signature_key"),
   mode: text("mode").notNull().default("CLOUD_TILL_LONG_POLLING"),
   enabled: integer("enabled").notNull().default(1),
+  configVersion: integer("config_version").notNull().default(1),
   ...timestamps,
 }, (table) => [
   uniqueIndex("idx_wallee_profiles_location").on(table.tenantId, table.locationId),

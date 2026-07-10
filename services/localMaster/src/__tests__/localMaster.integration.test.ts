@@ -7,7 +7,7 @@ import { after, test } from "node:test";
 import type { FastifyInstance } from "fastify";
 import type {
   BasketLine,
-  CompletedMockPayment,
+  PaymentResult,
   CreatedOrderSnapshot,
   DayClosePreview,
   LocalDevice,
@@ -64,8 +64,8 @@ test("local cash payments are idempotent by request_id", async () => {
     change_given: 300
   });
 
-  const first = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
-  const second = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const first = await postJson<PaymentResult>("/api/payments/cash/complete", request, 201);
+  const second = await postJson<PaymentResult>("/api/payments/cash/complete", request, 201);
 
   assert.equal(second.payment_id, first.payment_id);
   assert.equal(second.order_id, first.order_id);
@@ -76,11 +76,11 @@ test("local cash payments are idempotent by request_id", async () => {
 });
 
 test("same payment request_id with a different payload is rejected", async () => {
-  const request = paymentRequest("payment_replay_conflict", "CARD_MANUAL");
-  const first = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const request = paymentRequest("payment_replay_conflict", "CASH");
+  const first = await postJson<PaymentResult>("/api/payments/cash/complete", request, 201);
   const conflict = await app.inject({
     method: "POST",
-    url: "/api/mock-payments/complete",
+    url: "/api/payments/cash/complete",
     payload: {
       request: {
         ...request,
@@ -100,7 +100,7 @@ test("same payment request_id with a different payload is rejected", async () =>
 test("cash validation rejects insufficient received cash and wrong change", async () => {
   const insufficient = await app.inject({
     method: "POST",
-    url: "/api/mock-payments/complete",
+    url: "/api/payments/cash/complete",
     payload: {
       request: paymentRequest("payment_cash_insufficient", "CASH", {
         received_cash: 1000,
@@ -113,7 +113,7 @@ test("cash validation rejects insufficient received cash and wrong change", asyn
 
   const wrongChange = await app.inject({
     method: "POST",
-    url: "/api/mock-payments/complete",
+    url: "/api/payments/cash/complete",
     payload: {
       request: paymentRequest("payment_cash_wrong_change", "CASH", {
         received_cash: 1500,
@@ -159,13 +159,13 @@ test("staff table orders appear in the POS basket and close when paid from POS",
   assert.equal(basket?.lines[0]?.quantity, 2);
   assert.equal(basket?.lines[0]?.line_total, 1400);
 
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "payment_staff_order_from_pos",
       lines: basket?.lines ?? [],
       table_context: table,
-      payment_method: "CARD_MANUAL"
+      payment_method: "CASH"
     },
     201
   );
@@ -186,13 +186,13 @@ test("staff table payment lookup does not close an order from another location",
     { productId: "prod_staff_soda", productName: "Other Location Soda", unitPrice: 500, quantity: 1 }
   ]);
 
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "payment_same_table_other_location_guard",
       lines: [basketLine("same-table-current-location", 900)],
       table_context: table,
-      payment_method: "CARD_MANUAL"
+      payment_method: "CASH"
     },
     201
   );
@@ -204,46 +204,6 @@ test("staff table payment lookup does not close an order from another location",
   assert.equal(openOrders.some((order) => order.id === otherStaffOrder.id), true);
 });
 
-test("wallee simulator only closes locally on approved provider result", async () => {
-  const approved = await postJson<CompletedMockPayment>(
-    "/api/payments/wallee-terminal/start",
-    {
-      request_id: "wallee_approved",
-      terminal_id: "terminal-wallee-ok",
-      lines: [basketLine("wallee-ok-line", 1200)],
-      table_context: null,
-      simulator_outcome: "APPROVED"
-    },
-    201
-  );
-
-  assert.equal(approved.provider, "WALLEE_LTI_SIMULATOR");
-  assert.equal(approved.provider_status, "AUTHORIZED");
-  assert.equal(approved.lifecycle_state, "completed");
-
-  for (const outcome of ["DECLINED", "CANCELLED", "TIMEOUT"] as const) {
-    const failed = await app.inject({
-      method: "POST",
-      url: "/api/payments/wallee-terminal/start",
-      payload: {
-        request: {
-          request_id: "wallee_" + outcome.toLowerCase(),
-          terminal_id: "terminal-wallee-fail",
-          lines: [basketLine("wallee-fail-line-" + outcome, 1200)],
-          table_context: null,
-          simulator_outcome: outcome
-        }
-      }
-    });
-    const payment = failed.json<CompletedMockPayment>();
-
-    assert.equal(failed.statusCode, 202);
-    assert.equal(payment.provider_status, outcome);
-    assert.equal(payment.lifecycle_state, "failed");
-    assert.equal(payment.order_id.startsWith("provider_only_"), true);
-  }
-});
-
 test("completed cash payment creates immutable order snapshot and ledger entries once", async () => {
   const beforeSnapshots = orderSnapshots.length;
   const beforeLedger = salesLedgerEntries.length;
@@ -252,8 +212,8 @@ test("completed cash payment creates immutable order snapshot and ledger entries
     change_given: 300
   });
 
-  const payment = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
-  const replay = await postJson<CompletedMockPayment>("/api/mock-payments/complete", request, 201);
+  const payment = await postJson<PaymentResult>("/api/payments/cash/complete", request, 201);
+  const replay = await postJson<PaymentResult>("/api/payments/cash/complete", request, 201);
   const snapshot = await getOrderSnapshot(payment.order_id);
   const saleEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "SALE_COMPLETED");
   const paymentEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "PAYMENT_RECORDED");
@@ -306,7 +266,7 @@ test("completed cash payment creates immutable order snapshot and ledger entries
 });
 
 test("order snapshot reporting list filters paid snapshots and exposes storno state", async () => {
-  const paid = await postJson<CompletedMockPayment>("/api/mock-payments/complete", paymentRequest("snapshot_list_paid", "CASH", {
+  const paid = await postJson<PaymentResult>("/api/payments/cash/complete", paymentRequest("snapshot_list_paid", "CASH", {
     lines: [basketLine("snapshot-list-line", 2400, 2)],
     terminal_id: "terminal-list-a",
     received_cash: 4800,
@@ -320,7 +280,7 @@ test("order snapshot reporting list filters paid snapshots and exposes storno st
     lines: [{ line_id: "snapshot-list-line", quantity: 1 }]
   }, 201);
 
-  await postJson<CompletedMockPayment>("/api/mock-payments/complete", paymentRequest("snapshot_list_other", "CARD_MANUAL", {
+  await postJson<PaymentResult>("/api/payments/cash/complete", paymentRequest("snapshot_list_other", "CASH", {
     terminal_id: "terminal-list-b"
   }), 201);
 
@@ -340,45 +300,7 @@ test("order snapshot reporting list filters paid snapshots and exposes storno st
   assert.ok(paymentFiltered.every((snapshot) => snapshot.payment.method === "CASH"));
 });
 
-test("completed wallee terminal payment snapshots provider fields and failed provider outcomes do not create sales", async () => {
-  const beforeSnapshots = orderSnapshots.length;
-  const beforeLedger = salesLedgerEntries.length;
-  const approved = await postJson<CompletedMockPayment>(
-    "/api/payments/wallee-terminal/start",
-    {
-      request_id: "payment_snapshot_wallee",
-      terminal_id: "terminal-wallee-snapshot",
-      lines: [basketLine("wallee-snapshot-line", 1600)],
-      table_context: null,
-      simulator_outcome: "APPROVED"
-    },
-    201
-  );
-
-  const failed = await postJson<CompletedMockPayment>(
-    "/api/payments/wallee-terminal/start",
-    {
-      request_id: "payment_snapshot_wallee_declined",
-      terminal_id: "terminal-wallee-snapshot",
-      lines: [basketLine("wallee-snapshot-fail-line", 1600)],
-      table_context: null,
-      simulator_outcome: "DECLINED"
-    },
-    202
-  );
-  const snapshot = await getOrderSnapshot(approved.order_id);
-
-  assert.equal(orderSnapshots.length - beforeSnapshots, 1);
-  assert.equal(salesLedgerEntries.length - beforeLedger, 2);
-  assert.equal(snapshot.payment.provider, "WALLEE_LTI_SIMULATOR");
-  assert.equal(snapshot.payment.provider_transaction_id, approved.provider_transaction_id);
-  assert.equal(snapshot.payment.terminal_id, "terminal-wallee-snapshot");
-  assert.equal(failed.lifecycle_state, "failed");
-  assert.equal(orderSnapshots.some((entry) => entry.order_id === failed.order_id), false);
-  assert.equal(salesLedgerEntries.some((entry) => entry.order_id === failed.order_id), false);
-});
-
-test("sales reporting uses ledger entries and excludes unpaid or failed provider-only records", async () => {
+test("sales reporting uses ledger entries and excludes unpaid records", async () => {
   const businessDate = await postJson<{ business_date: string }>(
     "/api/business-date/current",
     { business_day_cutover_time: "04:00" },
@@ -394,43 +316,31 @@ test("sales reporting uses ledger entries and excludes unpaid or failed provider
     },
     201
   );
-  await postJson<CompletedMockPayment>(
-    "/api/payments/wallee-terminal/start",
-    {
-      request_id: "reporting_failed_provider_only",
-      terminal_id: "terminal-reporting-failed",
-      lines: [basketLine("reporting-failed-provider-line", 1300)],
-      table_context: null,
-      simulator_outcome: "TIMEOUT"
-    },
-    202
-  );
-  await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "reporting_card_sale",
       lines: [basketLine("reporting-card-sale-line", 2100)],
       table_context: null,
-      payment_method: "CARD_MANUAL"
+      payment_method: "CASH"
     },
     201
   );
   const after = await salesReport(businessDate.business_date);
 
   assert.equal(after.gross_total - before.gross_total, 2100);
-  assert.equal(after.payment_totals.card_manual - before.payment_totals.card_manual, 2100);
+  assert.equal(after.payment_totals.cash - before.payment_totals.cash, 2100);
   assert.equal(after.entries.some((entry) => entry.request_id === "reporting_unpaid_order"), false);
-  assert.equal(after.entries.some((entry) => entry.request_id === "reporting_failed_provider_only"), false);
 });
 
 test("partial storno creates negative ledger entries and rejects over-storno", async () => {
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "storno_partial_payment",
       lines: [basketLine("storno-partial-line", 500, 3)],
       table_context: null,
-      payment_method: "CARD_MANUAL"
+      payment_method: "CASH"
     },
     201
   );
@@ -472,8 +382,8 @@ test("partial storno creates negative ledger entries and rejects over-storno", a
 });
 
 test("full storno after partial only reverses remaining quantities and rejects when empty", async () => {
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "storno_full_after_partial_payment",
       lines: [basketLine("storno-full-after-partial-line", 400, 3)],
@@ -517,13 +427,13 @@ test("full storno after partial only reverses remaining quantities and rejects w
 });
 
 test("storno validation rejects unknown, zero, and conflicting partial requests", async () => {
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "storno_validation_payment",
       lines: [basketLine("storno-validation-line", 700, 2)],
       table_context: null,
-      payment_method: "CARD_MANUAL"
+      payment_method: "CASH"
     },
     201
   );
@@ -560,8 +470,8 @@ test("day close preview uses ledger corrections and saved close is immutable aft
     { business_day_cutover_time: "04:00" },
     200
   );
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
       request_id: "storno_day_close_payment",
       lines: [basketLine("storno-day-close-line", 1000, 2)],
@@ -599,62 +509,15 @@ test("day close preview uses ledger corrections and saved close is immutable aft
   assert.equal(afterStorno.product_sales.some((entry) => entry.product_id === "prod_storno-day-close-line" && entry.quantity >= 1), true);
 });
 
-test("wallee storno keeps original transaction and provider failure records no refund ledger", async () => {
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/payments/wallee-terminal/start",
-    {
-      request_id: "wallee_storno_payment",
-      terminal_id: "terminal-wallee-storno",
-      lines: [basketLine("wallee-storno-line", 1400)],
-      table_context: null,
-      simulator_outcome: "APPROVED"
-    },
-    201
-  );
-  const failed = await app.inject({
-    method: "POST",
-    url: "/api/orders/" + encodeURIComponent(payment.order_id) + "/stornos",
-    payload: {
-      request: {
-        request_id: "wallee_storno_failed_provider",
-        kind: "FULL",
-        reason: "Provider refused",
-        terminal_id: "terminal-wallee-storno",
-        provider: "WALLEE_LTI_SIMULATOR",
-        provider_refund_id: "refund_failed",
-        provider_status: "FAILED"
-      }
-    }
-  });
-  const beforeRefundEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "REFUND_RECORDED").length;
-  const storno = await createStorno(payment.order_id, {
-    request_id: "wallee_storno_success",
-    kind: "FULL",
-    reason: "Terminal refund",
-    terminal_id: "terminal-wallee-storno",
-    provider: "WALLEE_LTI_SIMULATOR",
-    provider_refund_id: "refund_success",
-    provider_status: "REFUNDED"
-  }, 201);
-  const afterRefundEntries = salesLedgerEntries.filter((entry) => entry.order_id === payment.order_id && entry.entry_type === "REFUND_RECORDED").length;
-
-  assert.equal(failed.statusCode, 500);
-  assert.equal(beforeRefundEntries, 0);
-  assert.equal(afterRefundEntries, 1);
-  assert.equal(storno.provider_transaction_id, payment.provider_transaction_id);
-  assert.equal(storno.provider_refund_id, "refund_success");
-  assert.equal(storno.provider_status, "REFUNDED");
-});
-
 test("receipt printer binding creates one receipt job after local payment completion", async () => {
   const terminalId = "terminal-receipt-sim";
-  const printer = await createPrinter("Receipt Simulator", "simulator");
+  const printer = await createPrinter("Receipt Browser", "browser");
   await bindReceiptPrinter(terminalId, printer.id);
 
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
-      ...paymentRequest("payment_receipt_job", "CARD_MANUAL"),
+      ...paymentRequest("payment_receipt_job", "CASH"),
       terminal_id: terminalId
     },
     201
@@ -667,10 +530,10 @@ test("receipt printer binding creates one receipt job after local payment comple
 });
 
 test("missing receipt printer does not block completed payment", async () => {
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
-      ...paymentRequest("payment_no_receipt_printer", "CARD_MANUAL"),
+      ...paymentRequest("payment_no_receipt_printer", "CASH"),
       terminal_id: "terminal-without-receipt-printer"
     },
     201
@@ -685,10 +548,10 @@ test("print retry request_id replay returns the same job without duplicate jobs"
   const printer = await createPrinter("Browser Printer", "browser");
   await bindReceiptPrinter(terminalId, printer.id);
 
-  const payment = await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  const payment = await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     {
-      ...paymentRequest("payment_retry_job", "CARD_MANUAL"),
+      ...paymentRequest("payment_retry_job", "CASH"),
       terminal_id: terminalId
     },
     201
@@ -706,8 +569,8 @@ test("print retry request_id replay returns the same job without duplicate jobs"
 });
 
 test("day close request_id replay returns the same saved close", async () => {
-  await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
+  await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
     paymentRequest("payment_day_close_replay", "CASH", {
       received_cash: 1500,
       change_given: 300
@@ -762,21 +625,21 @@ test("day close preview ignores legacy payments without ledger and counts lifecy
     orderId: legacyOrderId,
     orderNumber: "LEGACY-1",
     amount: 555,
-    method: "CARD_MANUAL",
+    method: "CASH",
     status: "COMPLETED",
     createdAt: now
   });
   persistPosOrders();
   persistPayments();
 
-  await postJson<CompletedMockPayment>(
-    "/api/mock-payments/complete",
-    paymentRequest("payment_lifecycle_day_close", "CARD_MANUAL"),
+  await postJson<PaymentResult>(
+    "/api/payments/cash/complete",
+    paymentRequest("payment_lifecycle_day_close", "CASH"),
     201
   );
   const after = await dayClosePreview(businessDate.business_date);
 
-  assert.equal(after.expected_card - before.expected_card, 1200);
+  assert.equal(after.expected_cash - before.expected_cash, 1200);
   assert.equal(after.expected_total - before.expected_total, 1200);
 });
 
@@ -1240,16 +1103,16 @@ test("unpaired PowerSync does not block local REST reads", async () => {
 });
 
 async function postJson<T>(url: string, request: unknown, expectedStatus: number): Promise<T> {
+  const normalizedRequest = normalizeCashTestRequest(url, request);
   const response = await app.inject({
     method: "POST",
     url,
-    payload: { request }
+    payload: { request: normalizedRequest }
   });
 
   assert.equal(response.statusCode, expectedStatus, response.body);
   return response.json<T>();
 }
-
 async function getJson<T>(url: string, expectedStatus = 200): Promise<T> {
   const response = await app.inject({ method: "GET", url });
 
@@ -1366,7 +1229,7 @@ async function getPrintJobs() {
   return response.json<{ data: PrintJob[] }>().data;
 }
 
-async function createPrinter(name: string, provider: "browser" | "simulator") {
+async function createPrinter(name: string, provider: "browser") {
   return postJson<LocalDevice>(
     "/api/local-devices",
     {
@@ -1448,16 +1311,29 @@ async function waitForPrintJob(jobId: string, predicate: (job: PrintJob) => bool
 
 function paymentRequest(
   requestId: string,
-  paymentMethod: "CASH" | "CARD_MANUAL",
+  paymentMethod: "CASH",
   cash: { received_cash?: number; change_given?: number; lines?: BasketLine[]; terminal_id?: string } = {}
 ) {
+  const lines = cash.lines ?? [basketLine(requestId + "_line", 1200)];
+  const total = lines.reduce((sum, line) => sum + line.line_total, 0);
   return {
     request_id: requestId,
-    lines: [basketLine(requestId + "_line", 1200)],
+    lines,
     table_context: null,
     payment_method: paymentMethod,
-    ...cash
+    ...cash,
+    received_cash: cash.received_cash ?? total,
+    change_given: cash.change_given ?? Math.max(0, (cash.received_cash ?? total) - total)
   };
+}
+
+function normalizeCashTestRequest(url: string, request: unknown) {
+  if (url !== "/api/payments/cash/complete" || !request || typeof request !== "object") return request;
+  const value = request as Record<string, unknown>;
+  if (value.received_cash !== undefined) return request;
+  const lines = Array.isArray(value.lines) ? value.lines as BasketLine[] : [];
+  const total = lines.reduce((sum, line) => sum + line.line_total, 0);
+  return { ...value, received_cash: total, change_given: 0 };
 }
 
 function basketLine(id: string, amount: number, quantity = 1): BasketLine {

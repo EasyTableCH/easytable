@@ -62,7 +62,7 @@ export const createOrderSnapshotSchema = {
   }
 } satisfies FastifySchema;
 
-export const completeMockPaymentSchema = {
+export const completePaymentSchema = {
   body: posRequestWrapperSchema,
   response: {
     201: {

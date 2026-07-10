@@ -33,7 +33,7 @@ import {
 import type { PosOrderSnapshot, StoredDayClose } from "./storeState.js";
 import type {
   BasketLine,
-  CompletedMockPayment,
+  PaymentResult,
   LocalDevice,
   LocalDeviceCreateRequest,
   LocalDeviceProvider,
@@ -212,21 +212,6 @@ export async function testLocalDevice(deviceId: string) {
     throw new Error("Local device not found.");
   }
 
-  if (device.type === "PRINTER" && device.provider === "simulator") {
-    const log = createPrintLog(device, "TEST", "Testdruck angekommen", [
-      "EasyTable Testdruck",
-      "Geraet: " + device.name,
-      "Quelle: Simulator"
-    ].join("\n"));
-
-    return {
-      ok: true,
-      device_id: device.id,
-      message: "Simulierter Testdruck gespeichert.",
-      print_log: log
-    };
-  }
-
   if (device.type === "PRINTER") {
     await sendEscPosTestPrint(device);
 
@@ -388,7 +373,7 @@ export function rebuildStationPrintJobsForOrder(order: PosOrderSnapshot) {
 export function enqueueReceiptPrintJob(
   terminalId: string | undefined,
   order: PosOrderSnapshot,
-  payment: CompletedMockPayment
+  payment: PaymentResult
 ) {
   const normalizedTerminalId = terminalId?.trim();
 
@@ -527,7 +512,7 @@ function normalizeLocalDeviceType(value: string): LocalDeviceType {
 }
 
 function normalizeLocalDeviceProvider(value: string): LocalDeviceProvider {
-  if (value === "manual" || value === "windows" || value === "escpos" || value === "browser" || value === "simulator") {
+  if (value === "manual" || value === "windows" || value === "escpos" || value === "browser") {
     return value;
   }
 
@@ -626,13 +611,8 @@ async function processPrintJob(job: PrintJob) {
       throw new Error("Browser printer jobs are not supported by LocalMaster.");
     }
 
-    if (device.provider === "simulator") {
-      createPrintLog(device, job.source, job.title, stripEscPosControlCodes(job.body));
-      job.status = "SIMULATED";
-    } else {
-      await sendEscPosPrintJob(device, job);
-      job.status = "PRINTED";
-    }
+    await sendEscPosPrintJob(device, job);
+    job.status = "PRINTED";
 
     job.error = null;
   } catch (error) {

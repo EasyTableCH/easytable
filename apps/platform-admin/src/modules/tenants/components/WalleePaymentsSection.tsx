@@ -21,6 +21,7 @@ type WalleePaymentsSectionProps = {
   terminals: WalleePaymentTerminal[];
   isLoading: boolean;
   onReload: () => void;
+  onRepublish: () => Promise<void>;
   onSaveProfile: (input: WalleePaymentProfileInput) => Promise<void>;
   onCreateTerminal: (input: WalleePaymentTerminalInput) => Promise<void>;
   onUpdateTerminal: (terminalId: string, input: Partial<WalleePaymentTerminalInput>) => Promise<void>;
@@ -34,6 +35,7 @@ export function WalleePaymentsSection({
   terminals,
   isLoading,
   onReload,
+  onRepublish,
   onSaveProfile,
   onCreateTerminal,
   onUpdateTerminal,
@@ -112,6 +114,10 @@ export function WalleePaymentsSection({
           <RefreshCw className={isLoading ? "size-4 animate-spin" : "size-4"} />
           Laden
         </Button>
+        <Button disabled={!canManage || !profile || isSaving} onClick={() => void onRepublish()} type="button" variant="outline">
+          <RefreshCw className="size-4" />
+          Konfiguration zustellen
+        </Button>
       </div>
 
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -119,7 +125,17 @@ export function WalleePaymentsSection({
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Profil</h3>
             <Badge variant={profile?.enabled ? "secondary" : "outline"}>{profile?.enabled ? "Aktiv" : "Inaktiv"}</Badge>
+            {profile ? <Badge variant="outline">Version {profile.config_version}</Badge> : null}
           </div>
+          {profile ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant={profile.config_delivery.status === "failed" ? "destructive" : profile.config_delivery.status === "accepted" ? "secondary" : "outline"}>
+                Zustellung: {deliveryLabel(profile.config_delivery.status)}
+              </Badge>
+              <span>LocalMaster-Version: {profile.config_delivery.active_local_master_version ?? "–"}</span>
+              {profile.config_delivery.error ? <span className="text-destructive">{profile.config_delivery.error}</span> : null}
+            </div>
+          ) : null}
           <label className="grid gap-1 text-sm">
             Space ID
             <input className="h-9 rounded-md border bg-background px-2.5" disabled={!canManage} value={form.space_id} onChange={(event) => setForm({ ...form, space_id: event.target.value })} />
@@ -273,4 +289,12 @@ function createTerminalForm(): WalleePaymentTerminalInput {
     is_default: false,
     is_active: true
   };
+}
+
+function deliveryLabel(status: WalleePaymentProfile["config_delivery"]["status"]) {
+  if (status === "pending") return "Ausstehend";
+  if (status === "delivered") return "Zugestellt";
+  if (status === "accepted") return "Akzeptiert";
+  if (status === "failed") return "Fehlgeschlagen";
+  return "Nicht veröffentlicht";
 }

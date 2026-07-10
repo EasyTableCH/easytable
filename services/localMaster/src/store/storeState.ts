@@ -17,15 +17,22 @@ import type {
 
 export type PaymentLifecycleState =
   | "payment_started"
+  | "provider_pending"
   | "provider_authorized"
+  | "provider_completed"
   | "local_recorded"
+  | "receipt_pending"
   | "receipt_queued"
   | "completed"
+  | "declined"
+  | "cancelled"
   | "failed"
-  | "reversal_required";
+  | "reversal_required"
+  | "reconciliation_required";
 
 export type LocalPayment = {
   id: string;
+  paymentAttemptId?: string | null;
   requestId?: string;
   orderId: string;
   orderNumber?: string;
@@ -41,6 +48,7 @@ export type LocalPayment = {
   lifecycleState?: PaymentLifecycleState;
   receiptPrintJobId?: string | null;
   failureReason?: string | null;
+  reconciliationRequired?: boolean;
   createdAt: number;
   updatedAt?: number;
   completedAt?: number | null;

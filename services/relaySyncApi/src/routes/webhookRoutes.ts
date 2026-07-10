@@ -10,7 +10,8 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
         ? request.headers["x-signature"][0]
         : request.headers["x-signature"];
 
-      return reply.code(202).send(await acceptWalleeWebhook(request.params.profileId, request.body, signature));
+      const rawBody = (request as typeof request & { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+      return reply.code(202).send(await acceptWalleeWebhook(request.params.profileId, request.body, signature, rawBody));
     }
   );
 }

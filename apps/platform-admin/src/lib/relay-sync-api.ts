@@ -196,6 +196,13 @@ export type WalleePaymentProfile = {
   has_webhook_signature_key: boolean;
   mode: "CLOUD_TILL_LONG_POLLING";
   enabled: boolean;
+  config_version: number;
+  config_delivery: {
+    status: "pending" | "delivered" | "accepted" | "failed" | "unpublished";
+    active_local_master_version: number | null;
+    error: string | null;
+    updated_at: string | null;
+  };
   created_at: string;
   updated_at: string;
 };
@@ -422,6 +429,14 @@ export function deleteWalleePaymentTerminal(tenantId: string, locationId: string
       encodeURIComponent(terminalId),
     "DELETE",
     undefined,
+  );
+}
+
+export function republishWalleePaymentConfig(tenantId: string, locationId: string) {
+  return writeJson<unknown>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/payment/wallee-config/republish",
+    "POST",
+    {},
   );
 }
 

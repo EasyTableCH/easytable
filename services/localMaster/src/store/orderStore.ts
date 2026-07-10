@@ -10,7 +10,9 @@ import {
 import { rebuildKdsTicketsForOrder } from "./kdsStore.js";
 import { rebuildStationPrintJobsForOrder, enqueueReceiptPrintJob } from "./printStore.js";
 import { areas, floors, layoutTables } from "./storeSeeds.js";
-import { startWalleeLtiPayment } from "./walleeLtiProvider.js";
+import { startWalleeCloudTillPayment } from "./walleeCloudTillProvider.js";
+import { completePaymentRecoveryJobsForAttempt, ensurePaymentRecoveryJob, getPaymentAttempt, updatePaymentAttempt } from "./paymentAttemptStore.js";
+import type { PaymentProviderResult } from "./paymentProviderTypes.js";
 import { recordCompletedSaleSnapshot } from "./reportingStore.js";
 import {
   payments,
@@ -28,8 +30,8 @@ import {
 import { findOpenPosOrderForTable, findOpenStaffOrderForTable, getTableLayout, tableFromContext } from "./tableStore.js";
 import type {
   BasketLine,
-  CompleteMockPaymentRequest,
-  CompletedMockPayment,
+  CompleteCashPaymentRequest,
+  PaymentResult as CompletedPaymentResult,
   CreatedOrderSnapshot,
   CreateOrderSnapshotRequest,
   KdsTicket,
@@ -61,7 +63,7 @@ export type OrderSnapshotResult = {
 };
 
 export type PaymentResult = {
-  payment: CompletedMockPayment;
+  payment: CompletedPaymentResult;
   table: Table | null;
   replayed?: boolean;
 };
@@ -150,8 +152,8 @@ function createOrderSnapshotUnchecked(request: CreateOrderSnapshotRequest): Orde
   };
 }
 
-export function completeMockPayment(request: CompleteMockPaymentRequest): PaymentResult {
-  validateMockPaymentRequest(request);
+export function completeCashPayment(request: CompleteCashPaymentRequest): PaymentResult {
+  validateCashPaymentRequest(request);
 
   const requestId = request.request_id.trim();
   const command = beginIdempotentCommand("PAYMENT_LOCAL_COMPLETE", requestId, {
@@ -168,7 +170,7 @@ export function completeMockPayment(request: CompleteMockPaymentRequest): Paymen
   }
 
   try {
-    const result = completeMockPaymentUnchecked(request, requestId);
+    const result = completeCashPaymentUnchecked(request, requestId);
     if (result.payment.lifecycle_state === "completed") {
       appendOutboxEvent("PAYMENT_COMPLETED", result.payment.payment_id, result.payment);
     }
@@ -178,12 +180,12 @@ export function completeMockPayment(request: CompleteMockPaymentRequest): Paymen
   }
 }
 
-function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, requestId: string): PaymentResult {
+function completeCashPaymentUnchecked(request: CompleteCashPaymentRequest, requestId: string): PaymentResult {
   const existingPayment = payments.find((payment) => payment.requestId === requestId);
 
   if (existingPayment) {
     return {
-      payment: toCompletedMockPayment(existingPayment),
+      payment: toPaymentResult(existingPayment),
       table: tableForPayment(existingPayment),
       replayed: true
     };
@@ -191,7 +193,7 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
 
   const now = Date.now();
   const requestTotal = calculateOrderTotals(request.lines).total;
-  validateMockPaymentAmounts(
+  validateCashPaymentAmounts(
     request.payment_method,
     request.received_cash,
     request.change_given,
@@ -236,7 +238,7 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
   advancePaymentLifecycle(paymentRecord, "local_recorded");
 
   try {
-    const receiptJob = enqueueReceiptPrintJob(terminalId ?? undefined, savedOrder.order, toCompletedMockPayment(paymentRecord));
+    const receiptJob = enqueueReceiptPrintJob(terminalId ?? undefined, savedOrder.order, toPaymentResult(paymentRecord));
 
     paymentRecord.receiptPrintJobId = receiptJob?.id ?? null;
     advancePaymentLifecycle(paymentRecord, receiptJob ? "receipt_queued" : "completed");
@@ -250,13 +252,118 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
   }
 
   if (paymentRecord.lifecycleState === "completed") {
-    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toCompletedMockPayment(paymentRecord));
+    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toPaymentResult(paymentRecord));
   }
 
   return {
-    payment: toCompletedMockPayment(paymentRecord),
+    payment: toPaymentResult(paymentRecord),
     table: savedOrder.order.table_context ? tableFromContext(savedOrder.order.table_context, "FREE") : null
   };
+}
+
+function finalizeAuthorizedWalleePayment(
+  request: StartWalleeTerminalPaymentRequest,
+  requestId: string,
+  providerResult: PaymentProviderResult,
+  now = Date.now()
+): PaymentResult {
+  const terminalId = request.wallee_terminal_config_id?.trim() || null;
+  const savedOrder = request.table_context ? saveTablePaymentOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
+  const paymentRecord: LocalPayment = {
+    id: scopedId("pay", now, 0),
+    paymentAttemptId: providerResult.payment_attempt_id,
+    requestId,
+    orderId: savedOrder.order.id,
+    orderNumber: savedOrder.order.order_number,
+    terminalId,
+    amount: savedOrder.order.total,
+    receivedCash: null,
+    changeGiven: null,
+    method: "WALLEE_TERMINAL",
+    status: "PENDING",
+    provider: providerResult.provider,
+    providerTransactionId: providerResult.provider_transaction_id,
+    providerStatus: providerResult.provider_status,
+    lifecycleState: providerResult.lifecycle_state,
+    receiptPrintJobId: null,
+    failureReason: null,
+    reconciliationRequired: false,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null
+  };
+
+  payments.push(paymentRecord);
+  persistPayments();
+  savedOrder.order.status = "CLOSED";
+  savedOrder.order.payment_status = "PAID";
+  savedOrder.order.updated_at = now;
+  savedOrder.order.closed_at = now;
+  persistPosOrders();
+  advancePaymentLifecycle(paymentRecord, "local_recorded");
+
+  try {
+    const receiptJob = enqueueReceiptPrintJob(request.pos_terminal_id?.trim() || undefined, savedOrder.order, toPaymentResult(paymentRecord));
+    paymentRecord.receiptPrintJobId = receiptJob?.id ?? null;
+    advancePaymentLifecycle(paymentRecord, receiptJob ? "receipt_queued" : "completed");
+    if (receiptJob) advancePaymentLifecycle(paymentRecord, "completed");
+  } catch (error) {
+    paymentRecord.status = "FAILED";
+    paymentRecord.failureReason = error instanceof Error ? error.message : String(error);
+    advancePaymentLifecycle(paymentRecord, "reversal_required");
+    if (paymentRecord.paymentAttemptId) {
+      updatePaymentAttempt(paymentRecord.paymentAttemptId, {
+        lifecycleState: "reversal_required",
+        reconciliationRequired: true,
+        failureReason: paymentRecord.failureReason
+      });
+      ensurePaymentRecoveryJob(paymentRecord.paymentAttemptId, "VOID");
+    }
+  }
+
+  if (paymentRecord.lifecycleState === "completed") {
+    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toPaymentResult(paymentRecord));
+    if (paymentRecord.paymentAttemptId) {
+      updatePaymentAttempt(paymentRecord.paymentAttemptId, {
+        orderId: savedOrder.order.id,
+        paymentId: paymentRecord.id,
+        lifecycleState: "completed",
+        reconciliationRequired: false,
+        completedAt: paymentRecord.completedAt ?? Date.now()
+      });
+      completePaymentRecoveryJobsForAttempt(paymentRecord.paymentAttemptId, "RECONCILE");
+    }
+  }
+
+  return {
+    payment: toPaymentResult(paymentRecord),
+    table: savedOrder.order.table_context ? tableFromContext(savedOrder.order.table_context, "FREE") : null
+  };
+}
+
+export function finalizeRecoveredWalleePaymentAttempt(paymentAttemptId: string): PaymentResult {
+  const attempt = getPaymentAttempt(paymentAttemptId);
+  if (!attempt) throw new Error("Payment attempt not found.");
+  const existing = payments.find((payment) => payment.paymentAttemptId === paymentAttemptId || payment.id === attempt.paymentId);
+  if (existing) return { payment: toPaymentResult(existing), table: tableForPayment(existing), replayed: true };
+  if (attempt.lifecycleState !== "provider_authorized" && attempt.lifecycleState !== "provider_completed") {
+    throw new Error("Payment attempt is not provider-authorized.");
+  }
+  const request = JSON.parse(attempt.requestJson) as StartWalleeTerminalPaymentRequest;
+  const result = finalizeAuthorizedWalleePayment(request, attempt.requestId, {
+    provider: "WALLEE_CLOUD_TILL",
+    payment_attempt_id: attempt.id,
+    provider_transaction_id: attempt.providerTransactionId,
+    provider_status: attempt.providerState ?? "UNKNOWN",
+    lifecycle_state: attempt.lifecycleState as PaymentProviderResult["lifecycle_state"],
+    authorized: true,
+    reconciliation_required: false,
+    failure_reason: null
+  });
+  if (result.payment.lifecycle_state === "completed") {
+    appendOutboxEvent("PAYMENT_COMPLETED", result.payment.payment_id, result.payment);
+  }
+  return result;
 }
 
 export async function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRequest): Promise<PaymentResult> {
@@ -266,8 +373,8 @@ export async function startWalleeTerminalPayment(request: StartWalleeTerminalPay
   const command = beginIdempotentCommand("PAYMENT_WALLEE_TERMINAL_START", requestId, {
     lines: request.lines,
     table_context: request.table_context,
-    terminal_id: request.terminal_id ?? null,
-    simulator_outcome: request.simulator_outcome ?? null
+    wallee_terminal_config_id: request.wallee_terminal_config_id ?? null,
+    pos_terminal_id: request.pos_terminal_id ?? null
   });
 
   if (command.mode === "replay") {
@@ -293,7 +400,7 @@ async function startWalleeTerminalPaymentUnchecked(
 
   if (existingPayment) {
     return {
-      payment: toCompletedMockPayment(existingPayment),
+      payment: toPaymentResult(existingPayment),
       table: tableForPayment(existingPayment),
       replayed: true
     };
@@ -301,89 +408,37 @@ async function startWalleeTerminalPaymentUnchecked(
 
   const now = Date.now();
   const totals = calculateOrderTotals(request.lines);
-  const terminalId = request.terminal_id?.trim() || null;
-  const providerResult = await startWalleeLtiPayment({
+  const terminalId = request.wallee_terminal_config_id?.trim() || null;
+  const providerResult = await startWalleeCloudTillPayment({
     request_id: requestId,
     amount: totals.total,
-    terminal_id: terminalId,
     lines: request.lines,
     table_context: request.table_context,
-    simulator_outcome: request.simulator_outcome
+    request
   });
 
   if (!providerResult.authorized) {
     const failedPayment = createProviderOnlyPaymentRecord({
       requestId,
       now,
+      paymentAttemptId: providerResult.payment_attempt_id,
       terminalId,
       amount: totals.total,
       provider: providerResult.provider,
       providerTransactionId: providerResult.provider_transaction_id,
       providerStatus: providerResult.provider_status,
+      lifecycleState: providerResult.lifecycle_state,
+      reconciliationRequired: providerResult.reconciliation_required,
       failureReason: providerResult.failure_reason
     });
 
     return {
-      payment: toCompletedMockPayment(failedPayment),
+      payment: toPaymentResult(failedPayment),
       table: null
     };
   }
 
-  const savedOrder = request.table_context ? saveTablePaymentOrderSnapshot(request, now) : saveCounterPaymentOrder(request, now);
-  const paymentRecord: LocalPayment = {
-    id: scopedId("pay", now, 0),
-    requestId,
-    orderId: savedOrder.order.id,
-    orderNumber: savedOrder.order.order_number,
-    terminalId,
-    amount: savedOrder.order.total,
-    receivedCash: null,
-    changeGiven: null,
-    method: "WALLEE_TERMINAL",
-    status: "PENDING",
-    provider: providerResult.provider,
-    providerTransactionId: providerResult.provider_transaction_id,
-    providerStatus: providerResult.provider_status,
-    lifecycleState: "provider_authorized",
-    receiptPrintJobId: null,
-    failureReason: null,
-    createdAt: now,
-    updatedAt: now,
-    completedAt: null
-  };
-
-  payments.push(paymentRecord);
-  persistPayments();
-
-  savedOrder.order.status = "CLOSED";
-  savedOrder.order.payment_status = "PAID";
-  savedOrder.order.updated_at = now;
-  savedOrder.order.closed_at = now;
-  persistPosOrders();
-  advancePaymentLifecycle(paymentRecord, "local_recorded");
-
-  try {
-    const receiptJob = enqueueReceiptPrintJob(terminalId ?? undefined, savedOrder.order, toCompletedMockPayment(paymentRecord));
-
-    paymentRecord.receiptPrintJobId = receiptJob?.id ?? null;
-    advancePaymentLifecycle(paymentRecord, receiptJob ? "receipt_queued" : "completed");
-    if (receiptJob) {
-      advancePaymentLifecycle(paymentRecord, "completed");
-    }
-  } catch (error) {
-    paymentRecord.status = "FAILED";
-    paymentRecord.failureReason = error instanceof Error ? error.message : String(error);
-    advancePaymentLifecycle(paymentRecord, "reversal_required");
-  }
-
-  if (paymentRecord.lifecycleState === "completed") {
-    recordCompletedSaleSnapshot(savedOrder.order, paymentRecord, toCompletedMockPayment(paymentRecord));
-  }
-
-  return {
-    payment: toCompletedMockPayment(paymentRecord),
-    table: savedOrder.order.table_context ? tableFromContext(savedOrder.order.table_context, "FREE") : null
-  };
+  return finalizeAuthorizedWalleePayment(request, requestId, providerResult, now);
 }
 
 export function createOrder(draft: OrderDraft): CreateOrderResult {
@@ -588,13 +643,14 @@ function toCreatedOrderSnapshot(
   };
 }
 
-function toCompletedMockPayment(payment: LocalPayment): CompletedMockPayment {
+function toPaymentResult(payment: LocalPayment): CompletedPaymentResult {
   const order = posOrders.find((entry) => entry.id === payment.orderId);
 
   return {
     order_id: payment.orderId,
     order_number: payment.orderNumber ?? order?.order_number ?? payment.orderId,
     payment_id: payment.id,
+    payment_attempt_id: payment.paymentAttemptId ?? null,
     request_id: payment.requestId ?? payment.id,
     payment_method: payment.method,
     amount: payment.amount,
@@ -607,6 +663,7 @@ function toCompletedMockPayment(payment: LocalPayment): CompletedMockPayment {
     provider_transaction_id: payment.providerTransactionId ?? null,
     provider_status: payment.providerStatus ?? (payment.status === "COMPLETED" ? "AUTHORIZED" : "UNKNOWN"),
     lifecycle_state: payment.lifecycleState ?? (payment.status === "COMPLETED" ? "completed" : "failed"),
+    reconciliation_required: payment.reconciliationRequired ?? payment.lifecycleState === "reconciliation_required",
     receipt_print_job_id: payment.receiptPrintJobId ?? null,
     failure_reason: payment.failureReason ?? null,
     created_at: payment.createdAt,
@@ -662,15 +719,19 @@ function tableForPayment(payment: LocalPayment) {
 function createProviderOnlyPaymentRecord(request: {
   requestId: string;
   now: number;
+  paymentAttemptId: string | null;
   terminalId: string | null;
   amount: number;
   provider: string;
   providerTransactionId: string | null;
   providerStatus: string;
+  lifecycleState: PaymentLifecycleState;
+  reconciliationRequired: boolean;
   failureReason: string | null;
 }) {
   const payment: LocalPayment = {
     id: scopedId("pay", request.now, 0),
+    paymentAttemptId: request.paymentAttemptId,
     requestId: request.requestId,
     orderId: "provider_only_" + request.requestId,
     orderNumber: "Provider only",
@@ -679,13 +740,14 @@ function createProviderOnlyPaymentRecord(request: {
     receivedCash: null,
     changeGiven: null,
     method: "WALLEE_TERMINAL",
-    status: "FAILED",
+    status: request.reconciliationRequired ? "PENDING" : "FAILED",
     provider: request.provider,
     providerTransactionId: request.providerTransactionId,
     providerStatus: request.providerStatus,
-    lifecycleState: "failed",
+    lifecycleState: request.lifecycleState,
     receiptPrintJobId: null,
     failureReason: request.failureReason,
+    reconciliationRequired: request.reconciliationRequired,
     createdAt: request.now,
     updatedAt: request.now,
     completedAt: null
@@ -737,7 +799,7 @@ function validateOrderSnapshotRequest(request: CreateOrderSnapshotRequest) {
   validateTableContext(request.table_context);
 }
 
-function validateMockPaymentRequest(request: CompleteMockPaymentRequest) {
+function validateCashPaymentRequest(request: CompleteCashPaymentRequest) {
   validateOrderLines(request.lines);
 
   if (request.table_context) {
@@ -748,8 +810,8 @@ function validateMockPaymentRequest(request: CompleteMockPaymentRequest) {
     throw new Error("Payment request_id is required.");
   }
 
-  if (request.payment_method !== "CASH" && request.payment_method !== "CARD_MANUAL") {
-    throw new Error("Unsupported mock payment method.");
+  if (request.payment_method !== "CASH") {
+    throw new Error("Unsupported local payment method.");
   }
 }
 
@@ -785,7 +847,7 @@ function isKnownLayoutTable(tableId: string) {
   );
 }
 
-function validateMockPaymentAmounts(
+function validateCashPaymentAmounts(
   paymentMethod: string,
   receivedCash: number | undefined,
   changeGiven: number | undefined,

@@ -8,9 +8,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PosScreen } from "../App";
 import {
-  completeMockPayment,
+  completeCashPayment,
+  reconcilePaymentAttempt,
   createClientRequestId,
   createOrderSnapshot,
+  getPaymentAttempt,
   getStoredTerminalConfig,
   loadOpenTableOrderBasket,
   loadPosSettings,
@@ -23,7 +25,7 @@ import { formatChf } from "../lib/money";
 import type {
   BasketLine,
   BasketLineVariant,
-  MockPaymentRequest,
+  PaymentRequest,
   PosProduct,
   ProductCard,
   ProductVariantGroup,
@@ -49,6 +51,7 @@ type CashRegisterScreenProps = {
 };
 
 const allCategoryLabel = "Alle";
+const pendingWalleeAttemptStorageKey = "easytable.pending-wallee-attempt";
 type CatalogViewMode = "grid" | "list";
 
 const productVisuals = [
@@ -96,6 +99,7 @@ export function CashRegisterScreen({
     useState<Record<string, ProductVariantGroupItem>>({});
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isCompletingPayment, setIsCompletingPayment] = useState(false);
+  const [pendingPaymentAttemptId, setPendingPaymentAttemptId] = useState<string | null>(null);
   const [isPaymentScreenOpen, setIsPaymentScreenOpen] = useState(false);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
   const [settingsFile, setSettingsFile] = useState<PosSettingsFile | null>(null);
@@ -134,6 +138,42 @@ export function CashRegisterScreen({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const storedAttemptId = window.localStorage.getItem(pendingWalleeAttemptStorageKey);
+    if (!storedAttemptId) return;
+    const attemptId: string = storedAttemptId;
+    let cancelled = false;
+    setPendingPaymentAttemptId(attemptId);
+    setOrderNotice("Offene Terminalzahlung wird wieder aufgenommen.");
+
+    async function resumePayment() {
+      try {
+        let attempt = await getPaymentAttempt(attemptId);
+        if (attempt.reconciliation_required) attempt = await reconcilePaymentAttempt(attemptId);
+        if (cancelled) return;
+        if (attempt.lifecycle_state === "completed") {
+          clearPendingWalleeAttempt();
+          setPendingPaymentAttemptId(null);
+          setBasketLines([]);
+          setIsPaymentScreenOpen(false);
+          setOrderNotice("Terminalzahlung wurde bestätigt.");
+          onOrderCreated();
+        } else if (["declined", "cancelled", "failed"].includes(attempt.lifecycle_state)) {
+          clearPendingWalleeAttempt();
+          setPendingPaymentAttemptId(null);
+          setOrderNotice(attempt.failure_reason ?? "Terminalzahlung wurde nicht abgeschlossen.");
+        } else {
+          setOrderNotice("Terminalzahlung wird weiterhin geprüft. Bitte keine zweite Zahlung starten.");
+        }
+      } catch {
+        if (!cancelled) setOrderNotice("Offene Terminalzahlung wird durch LocalMaster weiter geprüft.");
+      }
+    }
+
+    void resumePayment();
+    return () => { cancelled = true; };
+  }, [onOrderCreated]);
 
   useEffect(() => {
     return subscribeLocalMasterEvents((event) => {
@@ -222,8 +262,7 @@ export function CashRegisterScreen({
     : 0;
   const isWalleeTerminalEnabled =
     settingsFile?.settings.payment_terminal.enabled === true &&
-    (settingsFile.settings.payment_terminal.provider === "wallee_lti" ||
-      settingsFile.settings.payment_terminal.provider === "wallee_lti_simulator");
+    settingsFile.settings.payment_terminal.provider === "wallee_cloud_till";
 
   async function handleProductPress(product: ProductCard) {
     try {
@@ -430,8 +469,11 @@ export function CashRegisterScreen({
     setIsPaymentScreenOpen(true);
   }
 
-  async function handleCompleteMockPayment(paymentRequest: MockPaymentRequest) {
-    if (basketLines.length === 0 || isCompletingPayment) {
+  async function handleCompletePayment(paymentRequest: PaymentRequest) {
+    if (basketLines.length === 0 || isCompletingPayment || pendingPaymentAttemptId) {
+      if (pendingPaymentAttemptId) {
+        setOrderNotice("Eine Terminalzahlung wird noch geprüft. Bitte keine zweite Zahlung starten.");
+      }
       return;
     }
 
@@ -451,9 +493,9 @@ export function CashRegisterScreen({
             lines: basketLines,
             table_context: tableContext,
             request_id: requestId,
-            terminal_id: terminalId,
+            pos_terminal_id: terminalId,
           })
-          : await completeMockPayment({
+          : await completeCashPayment({
             lines: basketLines,
             table_context: tableContext,
             request_id: requestId,
@@ -462,6 +504,25 @@ export function CashRegisterScreen({
           });
 
       if (payment.lifecycle_state !== "completed") {
+        if (payment.reconciliation_required && payment.payment_attempt_id) {
+          setPendingPaymentAttemptId(payment.payment_attempt_id);
+          window.localStorage.setItem(pendingWalleeAttemptStorageKey, payment.payment_attempt_id);
+          setOrderNotice("Terminalzahlung wird geprüft. Bitte keine zweite Zahlung starten.");
+          try {
+            const reconciled = await reconcilePaymentAttempt(payment.payment_attempt_id);
+            if (reconciled.lifecycle_state === "completed") {
+              setBasketLines([]);
+              setPendingPaymentAttemptId(null);
+              clearPendingWalleeAttempt();
+              setIsPaymentScreenOpen(false);
+              setOrderNotice("Terminalzahlung wurde bestätigt.");
+              onOrderCreated();
+            }
+          } catch {
+            // LocalMaster recovery continues independently; keep the attempt locked in the POS.
+          }
+          return;
+        }
         throw new Error(payment.failure_reason ?? "Zahlung wurde nicht abgeschlossen.");
       }
 
@@ -476,7 +537,7 @@ export function CashRegisterScreen({
       setOrderNotice(
         error instanceof Error
           ? error.message
-          : "Mock-Zahlung konnte nicht abgeschlossen werden.",
+          : "Zahlung konnte nicht abgeschlossen werden.",
       );
     } finally {
       setIsCompletingPayment(false);
@@ -490,7 +551,7 @@ export function CashRegisterScreen({
         isSubmitting={isCompletingPayment}
         isWalleeTerminalEnabled={isWalleeTerminalEnabled}
         onCancel={() => setIsPaymentScreenOpen(false)}
-        onSelectMethod={(payment) => void handleCompleteMockPayment(payment)}
+        onSelectMethod={(payment) => void handleCompletePayment(payment)}
       />
     );
   }
@@ -692,6 +753,10 @@ export function CashRegisterScreen({
       />
     </main>
   );
+}
+
+function clearPendingWalleeAttempt() {
+  window.localStorage.removeItem(pendingWalleeAttemptStorageKey);
 }
 
 

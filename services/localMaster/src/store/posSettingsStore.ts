@@ -1,6 +1,7 @@
 import { location, tenant } from "./storeSeeds.js";
 import { loadLocalSiteConfig } from "./localSiteStore.js";
 import type { PosSettingsFile } from "../types.js";
+import { getWalleeConfigStatus } from "./walleeConfigStore.js";
 
 const posSettings: PosSettingsFile = {
   path: "local-master://settings/pos-settings.json",
@@ -17,15 +18,16 @@ const posSettings: PosSettingsFile = {
       device_id: null
     },
     payment_terminal: {
-      enabled: true,
-      provider: "wallee_lti_simulator",
-      device_id: "wallee_lti_simulator"
+      enabled: false,
+      provider: "wallee_cloud_till",
+      device_id: null
     }
   }
 };
 
 export function loadPosSettings(): PosSettingsFile {
   const siteConfig = loadLocalSiteConfig();
+  const walleeStatus = getWalleeConfigStatus();
   const baseSettings = {
     ...posSettings.settings,
     tenant_id: siteConfig.tenant.id,
@@ -38,7 +40,11 @@ export function loadPosSettings(): PosSettingsFile {
     settings: {
       ...baseSettings,
       receipt_printer: { ...baseSettings.receipt_printer },
-      payment_terminal: { ...baseSettings.payment_terminal }
+      payment_terminal: {
+        enabled: walleeStatus.enabled,
+        provider: "wallee_cloud_till",
+        device_id: walleeStatus.active_config_version === null ? null : String(walleeStatus.active_config_version)
+      }
     }
   };
 }

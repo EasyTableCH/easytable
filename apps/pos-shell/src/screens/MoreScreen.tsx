@@ -764,7 +764,7 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function clearSimulatorLogs() {
+  async function clearPrintHistory() {
     setClearingPrintLogs(true);
     setError(null);
 
@@ -878,7 +878,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
                   <option value="manual">Manuell</option>
                   <option value="windows">Windows</option>
                   <option value="escpos">ESC/POS</option>
-                  <option value="simulator">Simulator</option>
                   <option value="browser">Browser</option>
                 </select>
                 <input
@@ -1005,14 +1004,14 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
             <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-black uppercase text-slate-400">Print-Simulator</p>
-                  <h2 className="text-base font-black text-slate-950">Simulierte Drucke</h2>
+                  <p className="text-xs font-black uppercase text-slate-400">Druckhistorie</p>
+                  <h2 className="text-base font-black text-slate-950">Druckprotokoll</h2>
                 </div>
                 <Button
                   className="h-10 rounded-md font-black"
                   disabled={clearingPrintLogs || printLogs.length === 0}
                   variant="outline"
-                  onClick={clearSimulatorLogs}
+                  onClick={clearPrintHistory}
                 >
                   Logs leeren
                 </Button>
@@ -1021,7 +1020,7 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
               <div className="mt-4 grid gap-3">
                 {printLogs.length === 0 ? (
                   <p className="rounded-md bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
-                    Keine simulierten Drucke.
+                    Keine Druckprotokolle.
                   </p>
                 ) : (
                   printLogs.slice(0, 20).map((log) => (
@@ -1227,13 +1226,12 @@ function formatPrintLogSource(source: PrintLog["source"]) {
 function formatPrintJobStatus(status: PrintJob["status"]) {
   if (status === "PRINTING") return "Druckt";
   if (status === "PRINTED") return "Gedruckt";
-  if (status === "SIMULATED") return "Simuliert";
   if (status === "FAILED") return "Fehler";
   return "Wartet";
 }
 
 function printJobStatusClass(status: PrintJob["status"]) {
-  if (status === "PRINTED" || status === "SIMULATED") return "bg-emerald-100 text-emerald-700";
+  if (status === "PRINTED") return "bg-emerald-100 text-emerald-700";
   if (status === "FAILED") return "bg-red-100 text-red-700";
   if (status === "PRINTING") return "bg-sky-100 text-sky-700";
   return "bg-amber-100 text-amber-700";

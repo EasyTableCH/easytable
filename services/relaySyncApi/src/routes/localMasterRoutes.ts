@@ -5,12 +5,11 @@ import { replaceLocalMasterCatalog } from "../store/catalogRelayStore.js";
 import { ingestLocalMasterFinancialEvents } from "../store/financialRelayStore.js";
 import { replaceLocalMasterOperations } from "../store/operationsRelayStore.js";
 import { replaceLocalMasterTableLayout } from "../store/tableLayoutStore.js";
-import { getLocalMasterPaymentConfig, startLocalMasterWalleeTerminalPayment } from "../store/walleePaymentStore.js";
+import { getLocalMasterPaymentConfig } from "../store/walleePaymentStore.js";
 import type {
   LocalMasterOperationsSnapshot,
   LocalMasterFinancialEventsRequest,
   LocalMasterPairRequest,
-  LocalMasterWalleeTerminalPaymentRequest,
   OwnerCatalogSnapshot,
   RelayCommandAckRequest,
   TableLayout
@@ -54,11 +53,6 @@ export async function registerLocalMasterRoutes(app: FastifyInstance) {
     getLocalMasterPaymentConfig(readBearerToken(request.headers.authorization))
   );
 
-  app.post<{ Body: LocalMasterWalleeTerminalPaymentRequest }>(
-    "/api/local-masters/payments/wallee-terminal/start",
-    async (request, reply) =>
-      reply.code(202).send(await startLocalMasterWalleeTerminalPayment(readBearerToken(request.headers.authorization), request.body))
-  );
 }
 
 function readBearerToken(authorization: string | undefined) {

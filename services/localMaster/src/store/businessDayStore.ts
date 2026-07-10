@@ -35,7 +35,7 @@ export function getDayClosePreview(request: DayClosePreviewRequest): DayClosePre
     window_start_ms: window.startMs,
     window_end_ms: window.endMs,
     expected_cash: report.payment_totals.cash,
-    expected_card: report.payment_totals.card_manual + report.payment_totals.wallee_terminal,
+    expected_card: report.payment_totals.wallee_terminal,
     expected_total: report.gross_total,
     order_count: report.order_count,
     item_count: report.item_count,

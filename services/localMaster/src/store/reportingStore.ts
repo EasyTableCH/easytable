@@ -28,7 +28,7 @@ import type {
 } from "./storeState.js";
 import type {
   BasketLine,
-  CompletedMockPayment,
+  PaymentResult,
   CreateOrderStornoRequest,
   OrderSnapshotListItem,
   OrderSnapshotResponse,
@@ -55,7 +55,7 @@ type BusinessWindow = {
 export function recordCompletedSaleSnapshot(
   order: PosOrderForSnapshot,
   payment: LocalPayment,
-  completedPayment: CompletedMockPayment
+  completedPayment: PaymentResult
 ): FinalOrderSnapshot {
   const existing = getSnapshotByOrderId(order.id);
   if (existing) {
@@ -449,7 +449,6 @@ function buildSalesReport(window: BusinessWindow): SalesReport {
     item_count: sum(saleEntries, "quantity"),
     payment_totals: {
       cash: sum(paymentEntries.filter((entry) => entry.payment_method === "CASH"), "gross_amount"),
-      card_manual: sum(paymentEntries.filter((entry) => entry.payment_method === "CARD_MANUAL"), "gross_amount"),
       wallee_terminal: sum(paymentEntries.filter((entry) => entry.payment_method === "WALLEE_TERMINAL"), "gross_amount")
     },
     product_sales: productSales,

@@ -18,6 +18,7 @@ import {
   deleteWalleePaymentTerminal,
   getWalleePaymentProfile,
   listWalleePaymentTerminals,
+  republishWalleeConfig,
   updateWalleePaymentTerminal,
   upsertWalleePaymentProfile
 } from "../store/walleePaymentStore.js";
@@ -240,5 +241,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       await deleteWalleePaymentTerminal(request.params.tenantId, request.params.locationId, request.params.terminalId);
       reply.code(204).send();
     },
+  );
+
+  app.post<{ Params: { tenantId: string; locationId: string } }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-config/republish",
+    async (request, reply) => reply.code(202).send(await republishWalleeConfig(request.params.tenantId, request.params.locationId)),
   );
 }

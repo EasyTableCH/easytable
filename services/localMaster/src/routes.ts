@@ -5,6 +5,7 @@ import { registerCatalogRoutes } from "./routes/catalogRoutes.js";
 import { registerHealthRoutes } from "./routes/healthRoutes.js";
 import { registerKdsRoutes } from "./routes/kdsRoutes.js";
 import { registerOrderRoutes } from "./routes/orderRoutes.js";
+import { registerPaymentRoutes } from "./routes/paymentRoutes.js";
 import { registerOwnerLocationRoutes } from "./routes/ownerLocationRoutes.js";
 import { registerPairingRoutes } from "./routes/pairingRoutes.js";
 import { registerReportingRoutes } from "./routes/reportingRoutes.js";
@@ -19,6 +20,7 @@ export async function registerApiRoutes(app: FastifyInstance) {
   await app.register(registerTableRoutes);
   await app.register(registerBusinessRoutes);
   await app.register(registerOrderRoutes);
+  await app.register(registerPaymentRoutes);
   await app.register(registerReportingRoutes);
   await app.register(registerKdsRoutes);
   await app.register(registerStationPickupRoutes);

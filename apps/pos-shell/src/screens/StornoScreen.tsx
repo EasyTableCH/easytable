@@ -160,7 +160,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
               >
                 <option value="">Alle Zahlarten</option>
                 <option value="CASH">Cash</option>
-                <option value="CARD_MANUAL">Karte manuell</option>
                 <option value="WALLEE_TERMINAL">Wallee</option>
               </select>
               <Button className="h-11 rounded-md font-black" onClick={() => void refresh()}>
@@ -329,7 +328,6 @@ function formatMoney(amount: number) {
 
 function formatPaymentMethod(method: string) {
   if (method === "CASH") return "Cash";
-  if (method === "CARD_MANUAL") return "Karte";
   if (method === "WALLEE_TERMINAL") return "Wallee";
   return method;
 }

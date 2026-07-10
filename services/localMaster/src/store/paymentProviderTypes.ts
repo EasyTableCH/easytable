@@ -1,20 +1,22 @@
-import type { BasketLine, TableContext, WalleeTerminalSimulatorOutcome } from "../types.js";
+import type { BasketLine, PaymentLifecycleState, StartWalleeTerminalPaymentRequest, TableContext } from "../types.js";
 
-export type PaymentProviderCode = "LOCAL" | "WALLEE_LTI" | "WALLEE_LTI_SIMULATOR" | "WALLEE_CLOUD_TILL";
+export type PaymentProviderCode = "LOCAL" | "WALLEE_CLOUD_TILL";
 
 export type PaymentProviderRequest = {
   request_id: string;
   amount: number;
-  terminal_id: string | null;
   lines: BasketLine[];
   table_context: TableContext | null;
-  simulator_outcome?: WalleeTerminalSimulatorOutcome;
+  request: StartWalleeTerminalPaymentRequest;
 };
 
 export type PaymentProviderResult = {
   provider: PaymentProviderCode;
+  payment_attempt_id: string | null;
   provider_transaction_id: string | null;
-  provider_status: "AUTHORIZED" | "DECLINED" | "CANCELLED" | "TIMEOUT" | "UNKNOWN";
+  provider_status: string;
+  lifecycle_state: PaymentLifecycleState;
   authorized: boolean;
+  reconciliation_required: boolean;
   failure_reason: string | null;
 };

@@ -38,7 +38,7 @@ test("analytics model derives KPI, payment, product and storno data from ledger 
   assert.equal(model.orderCount, 1);
   assert.equal(model.itemCount, 2);
   assert.equal(model.stornoTotal, 400);
-  assert.deepEqual(model.paymentTotals, { cash: 700, cardManual: 0, walleeTerminal: 0 });
+  assert.deepEqual(model.paymentTotals, { cash: 700, walleeTerminal: 0 });
   assert.equal(model.productRows.find((row) => row.productName === "Espresso")?.quantity, 1);
   assert.deepEqual(model.revenueSeries, [{ date: "2026-07-08", gross: 700, storno: 400 }]);
 });
@@ -47,16 +47,16 @@ test("analytics filters payment, category, terminal and can exclude stornos", ()
   const reports = [report("2026-07-08", [
     sale({ orderId: "order_1", productId: "prod_1", category: "Bar", gross: 800, terminalId: "terminal_a", method: "CASH" }),
     payment({ orderId: "order_1", method: "CASH", gross: 800, terminalId: "terminal_a" }),
-    sale({ orderId: "order_2", productId: "prod_2", category: "Kitchen", gross: 1200, terminalId: "terminal_b", method: "CARD_MANUAL" }),
-    payment({ orderId: "order_2", method: "CARD_MANUAL", gross: 1200, terminalId: "terminal_b" }),
-    storno({ orderId: "order_2", productId: "prod_2", category: "Kitchen", gross: -300, terminalId: "terminal_b", method: "CARD_MANUAL" }),
-    refund({ orderId: "order_2", method: "CARD_MANUAL", gross: -300, terminalId: "terminal_b" })
+    sale({ orderId: "order_2", productId: "prod_2", category: "Kitchen", gross: 1200, terminalId: "terminal_b", method: "WALLEE_TERMINAL" }),
+    payment({ orderId: "order_2", method: "WALLEE_TERMINAL", gross: 1200, terminalId: "terminal_b" }),
+    storno({ orderId: "order_2", productId: "prod_2", category: "Kitchen", gross: -300, terminalId: "terminal_b", method: "WALLEE_TERMINAL" }),
+    refund({ orderId: "order_2", method: "WALLEE_TERMINAL", gross: -300, terminalId: "terminal_b" })
   ])];
 
   assert.deepEqual(availableCategories(reports), ["Bar", "Kitchen"]);
   assert.equal(buildAnalyticsViewModel(reports, { ...baseFilters, paymentMethod: "CASH" }).grossTotal, 800);
   assert.equal(buildAnalyticsViewModel(reports, { ...baseFilters, category: "Kitchen" }).grossTotal, 900);
-  assert.equal(buildAnalyticsViewModel(reports, { ...baseFilters, terminalId: "terminal_b" }).paymentTotals.cardManual, 900);
+  assert.equal(buildAnalyticsViewModel(reports, { ...baseFilters, terminalId: "terminal_b" }).paymentTotals.walleeTerminal, 900);
   assert.equal(buildAnalyticsViewModel(reports, { ...baseFilters, includeStornos: false }).grossTotal, 2000);
 });
 
@@ -79,7 +79,7 @@ function report(date: string, entries: SalesLedgerEntry[]): SalesReport {
     tax_total: 0,
     order_count: 0,
     item_count: 0,
-    payment_totals: { cash: 0, card_manual: 0, wallee_terminal: 0 },
+    payment_totals: { cash: 0, wallee_terminal: 0 },
     product_sales: [],
     entries
   };

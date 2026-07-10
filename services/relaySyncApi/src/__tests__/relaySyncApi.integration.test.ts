@@ -634,7 +634,7 @@ test("wallee profile and terminals are tenant-location scoped and redact secrets
   }
 });
 
-test("localMaster wallee payment uses configured terminal and maps gateway result", { skip: !hasDatabase }, async () => {
+test("localMaster receives versioned Wallee config and payment execution stays out of relay", { skip: !hasDatabase }, async () => {
   const ctx = assertModules();
   const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
   process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
@@ -659,62 +659,23 @@ test("localMaster wallee payment uses configured terminal and maps gateway resul
       instance_id: "lm_" + seed.suffix
     });
 
-    ctx.setWalleeTerminalGatewayForTests({
-      async performTransaction(input) {
-        assert.equal(input.profile.spaceId, "space_" + seed.suffix);
-        assert.equal(input.applicationUserSecret, "secret_" + seed.suffix);
-        assert.equal(input.terminal.terminalId, "terminal_" + seed.suffix);
-        assert.equal(input.request.amount, 1234);
-        return {
-          provider: "WALLEE_CLOUD_TILL",
-          provider_transaction_id: "txn_" + seed.suffix,
-          provider_status: "AUTHORIZED",
-          authorized: true,
-          failure_reason: null
-        };
-      }
+    const result = await ctx.getLocalMasterPaymentConfig(pairing.relay_token);
+    assert.equal(result.tenant_id, seed.tenantId);
+    assert.equal(result.location_id, seed.locationId);
+    assert.equal(result.local_master_instance_id, "lm_" + seed.suffix);
+    assert.equal(result.wallee?.authentication_key, "secret_" + seed.suffix);
+    assert.equal(result.wallee?.terminals[0]?.terminal_id, "terminal_" + seed.suffix);
+    assert.ok(result.config_version >= 2);
+    const commands = await ctx.listPendingRelayCommands(pairing.relay_token);
+    const configCommand = commands.find((command) => command.type === "WALLEE_CONFIG_VERSION_AVAILABLE");
+    assert.ok(configCommand);
+    await ctx.ackRelayCommand(pairing.relay_token, configCommand.command_id, {
+      status: "accepted",
+      result: { active_config_version: result.config_version, latest_status: "active" }
     });
-
-    const result = await ctx.startLocalMasterWalleeTerminalPayment(pairing.relay_token, {
-      request_id: "pay_" + seed.suffix,
-      amount: 1234,
-      currency: "CHF"
-    });
-
-    assert.equal(result.authorized, true);
-    assert.equal(result.provider_transaction_id, "txn_" + seed.suffix);
-  } finally {
-    ctx.setWalleeTerminalGatewayForTests(null);
-    restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
-  }
-});
-
-test("wallee webhooks verify signatures and dedupe event ids", { skip: !hasDatabase }, async () => {
-  const ctx = assertModules();
-  const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
-  process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
-  const seed = await seedTenantLocation(ctx);
-
-  try {
-    const profile = await ctx.upsertWalleePaymentProfile(seed.tenantId, seed.locationId, {
-      space_id: "space_" + seed.suffix,
-      application_user_id: "app_user_" + seed.suffix,
-      application_user_secret: "secret_" + seed.suffix,
-      webhook_signature_key: "webhook_" + seed.suffix,
-      enabled: true
-    });
-    const payload = { eventId: "evt_" + seed.suffix, entityId: "txn_" + seed.suffix };
-    const signature = "sha256=" + createHmac("sha256", "webhook_" + seed.suffix).update(JSON.stringify(payload)).digest("hex");
-
-    const first = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
-    const second = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
-
-    assert.deepEqual(first, { accepted: true, duplicate: false, event_id: payload.eventId });
-    assert.deepEqual(second, { accepted: true, duplicate: true, event_id: payload.eventId });
-    await assert.rejects(
-      () => ctx.acceptWalleeWebhook(profile.id, { eventId: "evt_bad_" + seed.suffix }, "sha256=00"),
-      /Invalid wallee webhook signature/
-    );
+    const deliveredProfile = await ctx.getWalleePaymentProfile(seed.tenantId, seed.locationId);
+    assert.equal(deliveredProfile?.config_delivery.status, "accepted");
+    assert.equal(deliveredProfile?.config_delivery.active_local_master_version, result.config_version);
   } finally {
     restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
   }
@@ -742,10 +703,17 @@ test("wallee webhook signatures support public-key verification", { skip: !hasDa
     signer.end();
     const signature = "algorithm=SHA256withECDSA,keyId=test,signature=" + signer.sign(keyPair.privateKey).toString("base64");
 
-    const result = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
+    const rawBody = JSON.stringify(payload);
+    const result = await ctx.acceptWalleeWebhook(profile.id, payload, signature, rawBody);
+    const duplicate = await ctx.acceptWalleeWebhook(profile.id, payload, signature, rawBody);
 
     assert.equal(result.accepted, true);
     assert.equal(result.duplicate, false);
+    assert.equal(duplicate.duplicate, true);
+    await assert.rejects(
+      () => ctx.acceptWalleeWebhook(profile.id, payload, signature, rawBody + " "),
+      /Invalid wallee webhook signature/
+    );
   } finally {
     restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
   }

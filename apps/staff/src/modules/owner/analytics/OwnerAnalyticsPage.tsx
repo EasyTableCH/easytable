@@ -184,7 +184,6 @@ export function OwnerAnalyticsPage() {
               </CardHeader>
               <CardContent className="grid gap-3">
                 <PaymentRow label="Cash" value={model.paymentTotals.cash} />
-                <PaymentRow label="Karte manuell" value={model.paymentTotals.cardManual} />
                 <PaymentRow label="Wallee Terminal" value={model.paymentTotals.walleeTerminal} />
               </CardContent>
             </Card>
@@ -222,7 +221,6 @@ function AnalyticsFiltersBar({
       <select className="h-10 rounded-md border bg-background px-3 text-sm font-medium" value={filters.paymentMethod} onChange={(event) => onChange({ ...filters, paymentMethod: event.target.value })}>
         <option value="">Alle Zahlarten</option>
         <option value="CASH">Cash</option>
-        <option value="CARD_MANUAL">Karte</option>
         <option value="WALLEE_TERMINAL">Wallee</option>
       </select>
       <select className="h-10 rounded-md border bg-background px-3 text-sm font-medium" value={filters.category} onChange={(event) => onChange({ ...filters, category: event.target.value })}>

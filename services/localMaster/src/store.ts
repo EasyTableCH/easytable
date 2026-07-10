@@ -5,7 +5,7 @@ export type {
 } from "./store/orderStore.js";
 
 export {
-  completeMockPayment,
+  completeCashPayment,
   createOrder,
   createOrderSnapshot,
   getOpenTableOrderBasket,
@@ -75,3 +75,5 @@ export {
   updatePosDeviceBinding,
   updateStationDeviceBinding
 } from "./store/printStore.js";
+
+export { getWalleeConfigStatus } from "./store/walleeConfigStore.js";

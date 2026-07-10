@@ -22,6 +22,7 @@ import {
   loadWalleePaymentTerminals,
   resetLocationUserPassword,
   resetLocationUserPin,
+  republishWalleePaymentConfig,
   saveWalleePaymentProfile,
   updateLocation,
   updateLocationUser,
@@ -376,6 +377,7 @@ export function TenantsPage() {
           )
         }
         onReload={() => refreshWalleePayments()}
+        onRepublish={() => runWalleeAction(async () => void (await republishWalleePaymentConfig(selectedTenant?.id ?? "", selectedLocation?.id ?? "")))}
         onSaveProfile={(input) =>
           runWalleeAction(async () =>
             void (await saveWalleePaymentProfile(selectedTenant?.id ?? "", selectedLocation?.id ?? "", input))

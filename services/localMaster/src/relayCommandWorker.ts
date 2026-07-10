@@ -1,4 +1,5 @@
 import { getRelayRuntimeBinding, retryCloudBootstrap } from "./cloudBinding.js";
+import { getWalleeConfigStatus, pullAndActivateWalleeConfig } from "./store/walleeConfigStore.js";
 import {
   createCatalogCategory,
   createCatalogProduct,
@@ -16,6 +17,7 @@ import {
 import { broadcast } from "./realtime.js";
 import { getCatalogSnapshot, pushCatalogToRelay } from "./relayCatalogSync.js";
 import { getOperationsSnapshot, pushOperationsToRelay } from "./relayOperationsSync.js";
+import { reconcilePaymentByProviderTransactionId } from "./paymentRecoveryWorker.js";
 import { acknowledgeStationPickup, createOrderSnapshot, updateKdsTicketStatus } from "./store.js";
 import { beginIdempotentCommand, completeIdempotentCommand, failIdempotentCommand } from "./store/commandStore.js";
 import type {
@@ -152,13 +154,34 @@ async function executeRelayCommand(command: RelayCommand, binding: NonNullable<R
       return;
     }
 
+    if (command.type === "WALLEE_CONFIG_VERSION_AVAILABLE") {
+      const payload = command.payload as { config_version?: unknown; checksum?: unknown };
+      const expectedVersion = Number(payload.config_version);
+      const expectedChecksum = required(payload.checksum, "checksum is required.");
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        throw new Error("Relay Wallee config command version is invalid.");
+      }
+      const status = await pullAndActivateWalleeConfig(binding, expectedVersion, expectedChecksum);
+      await ackRelayCommandSafely(binding, command.command_id, "accepted", status);
+      broadcast("PAYMENT_CONFIG_UPDATED", status);
+      return;
+    }
+
+    if (command.type === "WALLEE_TRANSACTION_CHANGED") {
+      const payload = command.payload as { entity_id?: unknown };
+      const entityId = required(payload.entity_id, "entity_id is required.");
+      const result = await reconcilePaymentByProviderTransactionId(entityId);
+      await ackRelayCommandSafely(binding, command.command_id, "accepted", result);
+      return;
+    }
+
     throw new Error("Unsupported relay command type: " + command.type);
   } catch (error) {
     await ackRelayCommandSafely(
       binding,
       command.command_id,
       "failed",
-      null,
+      command.type === "WALLEE_CONFIG_VERSION_AVAILABLE" ? getWalleeConfigStatus() : null,
       error instanceof Error ? error.message : String(error)
     );
   }
