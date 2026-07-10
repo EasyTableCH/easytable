@@ -5,6 +5,7 @@ import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 import { getDrizzleDatabase } from "./db/client.js";
 import { catalogCategories, catalogOutputStations, catalogProducts, catalogTaxes } from "./db/schema.js";
 import { loadLocalSiteConfig } from "./store/localSiteStore.js";
+import { duplicateVariantGroupsForCategory, duplicateVariantGroupsForProduct } from "./store/productVariantStore.js";
 import type {
   CatalogCategory,
   CatalogCategoryCreateRequest,
@@ -310,7 +311,7 @@ export function updateCatalogProduct(productId: string, request: CatalogProductU
 export function duplicateCatalogProduct(productId: string): CatalogProduct {
   const current = requireProduct(productId);
 
-  return createCatalogProduct({
+  const duplicate = createCatalogProduct({
     category_id: current.category_id,
     tax_id: current.tax_id,
     product_type: current.product_type,
@@ -319,6 +320,9 @@ export function duplicateCatalogProduct(productId: string): CatalogProduct {
     is_available: current.is_available,
     station_id: current.station_id
   });
+
+  duplicateVariantGroupsForProduct(productId, duplicate.id);
+  return duplicate;
 }
 
 export function deleteCatalogProduct(productId: string) {
@@ -385,11 +389,14 @@ export function updateCatalogCategory(categoryId: string, request: CatalogCatego
 export function duplicateCatalogCategory(categoryId: string): CatalogCategory {
   const current = requireCategory(categoryId);
 
-  return createCatalogCategory({
+  const duplicate = createCatalogCategory({
     name: uniqueCategoryName(current.name + " Kopie"),
     sort_order: current.sort_order + 1,
     default_station_id: current.default_station_id
   });
+
+  duplicateVariantGroupsForCategory(current.name, duplicate.name);
+  return duplicate;
 }
 
 export function deleteCatalogCategory(categoryId: string) {

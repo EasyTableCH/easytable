@@ -40,9 +40,18 @@ export {
 } from "./store/tableStore.js";
 
 export {
-  listProductVariantGroups,
   listProducts
 } from "./store/catalogReadStore.js";
+
+export {
+  createProductVariantGroup,
+  deleteProductVariantGroup,
+  duplicateVariantGroupsForCategory,
+  duplicateVariantGroupsForProduct,
+  listOwnerProductVariantGroups,
+  listVariantGroupsForProduct as listProductVariantGroups,
+  updateProductVariantGroup
+} from "./store/productVariantStore.js";
 
 export {
   loadPosSettings

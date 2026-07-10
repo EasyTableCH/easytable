@@ -6,12 +6,15 @@ import { Button } from "@easytable/ui/components/button";
 import {
   detectConnectionMode,
   loadOwnerCatalogForConnection,
+  loadOwnerProductVariantGroups,
   runOwnerCatalogActionForConnection,
   subscribeConnectionEvents,
   type CatalogCategory,
   type CatalogOutputStation,
   type CatalogProduct,
   type CatalogTax,
+  type ProductVariantGroup,
+  type ProductVariantGroupInput,
   type ConnectionMode,
 } from "../../../lib/local-master";
 import type { OwnerCatalogSection } from "../../../layout/navigation";
@@ -28,6 +31,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [outputStations, setOutputStations] = useState<CatalogOutputStation[]>([]);
   const [taxes, setTaxes] = useState<CatalogTax[]>([]);
+  const [variantGroups, setVariantGroups] = useState<ProductVariantGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("OFFLINE");
@@ -44,6 +48,7 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
       setCategories(snapshot.categories);
       setTaxes(snapshot.taxes);
       setOutputStations(snapshot.output_stations);
+      setVariantGroups(await loadOwnerProductVariantGroups());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Katalog konnte nicht geladen werden.");
     } finally {
@@ -95,6 +100,10 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
           outputStations={outputStations}
           products={products}
           taxes={taxes}
+          variantGroups={variantGroups}
+          onCreateVariantGroup={(input: ProductVariantGroupInput) => runAction("OWNER_CATALOG_VARIANT_GROUP_CREATE", input)}
+          onUpdateVariantGroup={(groupId: string, input: ProductVariantGroupInput) => runAction("OWNER_CATALOG_VARIANT_GROUP_UPDATE", { group_id: groupId, input })}
+          onDeleteVariantGroup={(groupId: string) => runAction("OWNER_CATALOG_VARIANT_GROUP_DELETE", { group_id: groupId })}
         />
       ) : section === "categories" ? (
         <CategoriesView
@@ -106,6 +115,10 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
           onReload={refreshCatalog}
           onUpdate={(categoryId, input) => runAction("OWNER_CATALOG_CATEGORY_UPDATE", { category_id: categoryId, input })}
           outputStations={outputStations}
+          variantGroups={variantGroups}
+          onCreateVariantGroup={(input: ProductVariantGroupInput) => runAction("OWNER_CATALOG_VARIANT_GROUP_CREATE", input)}
+          onUpdateVariantGroup={(groupId: string, input: ProductVariantGroupInput) => runAction("OWNER_CATALOG_VARIANT_GROUP_UPDATE", { group_id: groupId, input })}
+          onDeleteVariantGroup={(groupId: string) => runAction("OWNER_CATALOG_VARIANT_GROUP_DELETE", { group_id: groupId })}
         />
       ) : (
         <TaxView

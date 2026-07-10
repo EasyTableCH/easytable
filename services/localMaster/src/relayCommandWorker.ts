@@ -14,6 +14,7 @@ import {
   updateCatalogProduct,
   updateCatalogTax
 } from "./catalogStore.js";
+import { createProductVariantGroup, deleteProductVariantGroup, updateProductVariantGroup } from "./store/productVariantStore.js";
 import { broadcast } from "./realtime.js";
 import { getCatalogSnapshot, pushCatalogToRelay } from "./relayCatalogSync.js";
 import { getOperationsSnapshot, pushOperationsToRelay } from "./relayOperationsSync.js";
@@ -332,6 +333,16 @@ function executeOwnerCatalogCommand(command: RelayCommand) {
       break;
     case "OWNER_CATALOG_TAX_DUPLICATE":
       result = duplicateCatalogTax(required(payload.payload.tax_id, "tax_id is required."));
+      break;
+    case "OWNER_CATALOG_VARIANT_GROUP_CREATE":
+      result = createProductVariantGroup(payload.payload as any);
+      break;
+    case "OWNER_CATALOG_VARIANT_GROUP_UPDATE":
+      result = updateProductVariantGroup(required(payload.payload.group_id, "group_id is required."), payload.payload.input ?? {});
+      break;
+    case "OWNER_CATALOG_VARIANT_GROUP_DELETE":
+      deleteProductVariantGroup(required(payload.payload.group_id, "group_id is required."));
+      result = { id: payload.payload.group_id };
       break;
     default:
       throw new Error("Unsupported owner catalog action: " + payload.action);

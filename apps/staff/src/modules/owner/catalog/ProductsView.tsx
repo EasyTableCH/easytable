@@ -13,9 +13,10 @@ import {
   TableRow,
 } from "@easytable/ui/components/table";
 
-import type { CatalogCategory, CatalogOutputStation, CatalogProduct, CatalogProductInput, CatalogTax } from "../../../lib/local-master";
+import type { CatalogCategory, CatalogOutputStation, CatalogProduct, CatalogProductInput, CatalogTax, ProductVariantGroup, ProductVariantGroupInput } from "../../../lib/local-master";
 import { CatalogFilters } from "./components/CatalogFilters";
 import { DuplicateIconButton, ProductFormDialog } from "./components/ProductFormDialog";
+import { VariantGroupsSheet } from "./components/VariantGroupsSheet";
 import { formatMoney } from "./utils";
 
 type ProductsViewProps = {
@@ -29,6 +30,10 @@ type ProductsViewProps = {
   onUpdate: (productId: string, input: Partial<CatalogProductInput>) => Promise<void>;
   onDelete: (productId: string) => Promise<void>;
   onDuplicate: (productId: string) => Promise<void>;
+  variantGroups: ProductVariantGroup[];
+  onCreateVariantGroup: (input: ProductVariantGroupInput) => Promise<void>;
+  onUpdateVariantGroup: (groupId: string, input: ProductVariantGroupInput) => Promise<void>;
+  onDeleteVariantGroup: (groupId: string) => Promise<void>;
 };
 
 export function ProductsView({
@@ -42,6 +47,10 @@ export function ProductsView({
   onUpdate,
   onDelete,
   onDuplicate,
+  variantGroups,
+  onCreateVariantGroup,
+  onUpdateVariantGroup,
+  onDeleteVariantGroup,
 }: ProductsViewProps) {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("all");
@@ -195,6 +204,7 @@ export function ProductsView({
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      <VariantGroupsSheet groups={variantGroups} mode="PRODUCT" product={product} onCreate={onCreateVariantGroup} onUpdate={onUpdateVariantGroup} onDelete={onDeleteVariantGroup} />
                       <ProductFormDialog
                         categories={categories}
                         mode="edit"
