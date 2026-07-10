@@ -21,14 +21,22 @@ import {
   updateCatalogProduct,
   updateCatalogTax
 } from "../catalogStore.js";
-import { listProductVariantGroups, listProducts } from "../store.js";
+import {
+  createProductVariantGroup,
+  deleteProductVariantGroup,
+  listOwnerProductVariantGroups,
+  listProductVariantGroups,
+  listProducts,
+  updateProductVariantGroup
+} from "../store.js";
 import type {
   CatalogCategoryCreateRequest,
   CatalogCategoryUpdateRequest,
   CatalogProductCreateRequest,
   CatalogProductUpdateRequest,
   CatalogTaxCreateRequest,
-  CatalogTaxUpdateRequest
+  CatalogTaxUpdateRequest,
+  ProductVariantGroup
 } from "../types.js";
 
 export async function registerCatalogRoutes(app: FastifyInstance) {
@@ -125,6 +133,30 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
       const product = duplicateCatalogProduct(request.params.productId);
       broadcastCatalogUpdated("PRODUCT_CREATED", product);
       return reply.code(201).send(product);
+    }
+  );
+
+
+  app.get("/api/catalog/product-variant-groups", async () => ({ data: listOwnerProductVariantGroups() }));
+  app.post<{ Body: ProductVariantGroup }>("/api/catalog/product-variant-groups", async (request, reply) => {
+    const group = createProductVariantGroup(request.body);
+    broadcastCatalogUpdated("VARIANT_GROUP_CREATED", group);
+    return reply.code(201).send(group);
+  });
+  app.patch<{ Params: { groupId: string }; Body: Partial<ProductVariantGroup> }>(
+    "/api/catalog/product-variant-groups/:groupId",
+    async (request) => {
+      const group = updateProductVariantGroup(request.params.groupId, request.body);
+      broadcastCatalogUpdated("VARIANT_GROUP_UPDATED", group);
+      return group;
+    }
+  );
+  app.delete<{ Params: { groupId: string } }>(
+    "/api/catalog/product-variant-groups/:groupId",
+    async (request, reply) => {
+      deleteProductVariantGroup(request.params.groupId);
+      broadcastCatalogUpdated("VARIANT_GROUP_DELETED", { id: request.params.groupId });
+      return reply.code(204).send();
     }
   );
 

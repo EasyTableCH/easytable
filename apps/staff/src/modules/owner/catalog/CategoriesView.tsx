@@ -12,9 +12,10 @@ import {
   TableRow,
 } from "@easytable/ui/components/table";
 
-import type { CatalogCategory, CatalogCategoryInput, CatalogOutputStation } from "../../../lib/local-master";
+import type { CatalogCategory, CatalogCategoryInput, CatalogOutputStation, ProductVariantGroup, ProductVariantGroupInput } from "../../../lib/local-master";
 import { CatalogFilters } from "./components/CatalogFilters";
 import { CategoryFormDialog, DuplicateCategoryButton } from "./components/CategoryFormDialog";
+import { VariantGroupsSheet } from "./components/VariantGroupsSheet";
 
 type CategoriesViewProps = {
   categories: CatalogCategory[];
@@ -25,6 +26,10 @@ type CategoriesViewProps = {
   onUpdate: (categoryId: string, input: CatalogCategoryInput) => Promise<void>;
   onDelete: (categoryId: string) => Promise<void>;
   onDuplicate: (categoryId: string) => Promise<void>;
+  variantGroups: ProductVariantGroup[];
+  onCreateVariantGroup: (input: ProductVariantGroupInput) => Promise<void>;
+  onUpdateVariantGroup: (groupId: string, input: ProductVariantGroupInput) => Promise<void>;
+  onDeleteVariantGroup: (groupId: string) => Promise<void>;
 };
 
 export function CategoriesView({
@@ -36,6 +41,10 @@ export function CategoriesView({
   onUpdate,
   onDelete,
   onDuplicate,
+  variantGroups,
+  onCreateVariantGroup,
+  onUpdateVariantGroup,
+  onDeleteVariantGroup,
 }: CategoriesViewProps) {
   const [search, setSearch] = useState("");
 
@@ -110,6 +119,7 @@ export function CategoriesView({
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      <VariantGroupsSheet category={category} groups={variantGroups} mode="CATEGORY" onCreate={onCreateVariantGroup} onUpdate={onUpdateVariantGroup} onDelete={onDeleteVariantGroup} />
                       <CategoryFormDialog
                         category={category}
                         mode="edit"

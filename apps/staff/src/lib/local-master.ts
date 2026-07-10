@@ -111,6 +111,11 @@ export type ProductVariantGroup = {
   items: ProductVariantGroupItem[];
 };
 
+export type ProductVariantGroupInput = Omit<ProductVariantGroup, "id" | "items"> & {
+  id?: string;
+  items: Array<Omit<ProductVariantGroupItem, "id" | "variant_group_id"> & { id?: string }>;
+};
+
 export type BasketLineVariant = {
   variant_group_id: string;
   variant_group_name: string;
@@ -607,6 +612,22 @@ export function loadProductsForConnection(connectionMode: ConnectionMode) {
   }
 
   throw new Error(describeConnectionUnavailable());
+}
+
+export function loadOwnerProductVariantGroups() {
+  return readJson<ProductVariantGroup[]>("/api/catalog/product-variant-groups", []);
+}
+
+export function createProductVariantGroup(input: ProductVariantGroupInput) {
+  return writeJson<ProductVariantGroup>("/api/catalog/product-variant-groups", "POST", input);
+}
+
+export function updateProductVariantGroup(groupId: string, input: ProductVariantGroupInput) {
+  return writeJson<ProductVariantGroup>("/api/catalog/product-variant-groups/" + encodeURIComponent(groupId), "PATCH", input);
+}
+
+export function deleteProductVariantGroup(groupId: string) {
+  return writeJson<void>("/api/catalog/product-variant-groups/" + encodeURIComponent(groupId), "DELETE");
 }
 
 export function loadProductVariantGroups(productId: string) {
@@ -1266,6 +1287,12 @@ function runLocalOwnerCatalogAction(action: string, payload: unknown) {
       return deleteCatalogTax(String(input.tax_id));
     case "OWNER_CATALOG_TAX_DUPLICATE":
       return duplicateCatalogTax(String(input.tax_id));
+    case "OWNER_CATALOG_VARIANT_GROUP_CREATE":
+      return createProductVariantGroup(input as ProductVariantGroupInput);
+    case "OWNER_CATALOG_VARIANT_GROUP_UPDATE":
+      return updateProductVariantGroup(String(input.group_id), input.input as ProductVariantGroupInput);
+    case "OWNER_CATALOG_VARIANT_GROUP_DELETE":
+      return deleteProductVariantGroup(String(input.group_id));
     default:
       throw new Error("Owner catalog action is not supported.");
   }
