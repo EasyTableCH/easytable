@@ -95,7 +95,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     "/api/payments/wallee-terminal/start",
     { schema: completeMockPaymentSchema },
     async (request, reply) => {
-      const result = startWalleeTerminalPayment(request.body.request);
+      const result = await startWalleeTerminalPayment(request.body.request);
       const { payment, table } = result;
 
       if (!result.replayed) {

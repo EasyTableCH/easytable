@@ -14,6 +14,14 @@ import {
 } from "../store/platformAdministratorStore.js";
 import { createTenant, listTenants, updateTenant } from "../store/tenantStore.js";
 import {
+  createWalleePaymentTerminal,
+  deleteWalleePaymentTerminal,
+  getWalleePaymentProfile,
+  listWalleePaymentTerminals,
+  updateWalleePaymentTerminal,
+  upsertWalleePaymentProfile
+} from "../store/walleePaymentStore.js";
+import {
   archiveLocationUser,
   createLocationUser,
   deleteLocationUser,
@@ -34,7 +42,10 @@ import type {
   TenantLocationUserResetPinRequest,
   TenantLocationUserUpdateRequest,
   TenantCreateRequest,
-  TenantUpdateRequest
+  TenantUpdateRequest,
+  WalleePaymentProfileUpsertRequest,
+  WalleePaymentTerminalCreateRequest,
+  WalleePaymentTerminalUpdateRequest
 } from "../types.js";
 
 export async function registerAdminRoutes(app: FastifyInstance) {
@@ -190,6 +201,44 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     async (request, reply) => {
       await deleteOutputStation(request.params.tenantId, request.params.locationId, request.params.stationId);
       return reply.code(204).send();
+    },
+  );
+
+  app.get<{ Params: { tenantId: string; locationId: string } }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-profile",
+    async (request) => getWalleePaymentProfile(request.params.tenantId, request.params.locationId),
+  );
+
+  app.put<{ Params: { tenantId: string; locationId: string }; Body: WalleePaymentProfileUpsertRequest }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-profile",
+    async (request) => upsertWalleePaymentProfile(request.params.tenantId, request.params.locationId, request.body),
+  );
+
+  app.get<{ Params: { tenantId: string; locationId: string } }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-terminals",
+    async (request) => ({ data: await listWalleePaymentTerminals(request.params.tenantId, request.params.locationId) }),
+  );
+
+  app.post<{ Params: { tenantId: string; locationId: string }; Body: WalleePaymentTerminalCreateRequest }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-terminals",
+    async (request, reply) =>
+      reply.code(201).send(await createWalleePaymentTerminal(request.params.tenantId, request.params.locationId, request.body)),
+  );
+
+  app.patch<{
+    Params: { tenantId: string; locationId: string; terminalId: string };
+    Body: WalleePaymentTerminalUpdateRequest;
+  }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-terminals/:terminalId",
+    async (request) =>
+      updateWalleePaymentTerminal(request.params.tenantId, request.params.locationId, request.params.terminalId, request.body),
+  );
+
+  app.delete<{ Params: { tenantId: string; locationId: string; terminalId: string } }>(
+    "/api/admin/tenants/:tenantId/locations/:locationId/payment/wallee-terminals/:terminalId",
+    async (request, reply) => {
+      await deleteWalleePaymentTerminal(request.params.tenantId, request.params.locationId, request.params.terminalId);
+      reply.code(204).send();
     },
   );
 }

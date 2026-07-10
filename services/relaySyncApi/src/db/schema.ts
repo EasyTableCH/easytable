@@ -291,6 +291,56 @@ export const payments = pgTable("payments", {
   ...timestamps,
 }, (table) => [index("idx_payments_tenant_day_close").on(table.tenantId, table.status, table.method, table.paidAt)]);
 
+export const walleePaymentProfiles = pgTable("wallee_payment_profiles", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => locations.id, { onDelete: "cascade" }),
+  spaceId: text("space_id").notNull(),
+  applicationUserId: text("application_user_id").notNull(),
+  applicationUserSecretEncrypted: text("application_user_secret_encrypted").notNull(),
+  webhookSignatureKey: text("webhook_signature_key"),
+  mode: text("mode").notNull().default("CLOUD_TILL_LONG_POLLING"),
+  enabled: integer("enabled").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("idx_wallee_profiles_location").on(table.tenantId, table.locationId),
+  index("idx_wallee_profiles_tenant").on(table.tenantId, table.enabled),
+]);
+
+export const walleePaymentTerminals = pgTable("wallee_payment_terminals", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id").notNull().references(() => walleePaymentProfiles.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => locations.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  terminalId: text("terminal_id"),
+  terminalIdentifier: text("terminal_identifier"),
+  isDefault: integer("is_default").notNull().default(0),
+  isActive: integer("is_active").notNull().default(1),
+  ...timestamps,
+}, (table) => [
+  index("idx_wallee_terminals_profile").on(table.profileId, table.isActive, table.displayName),
+  index("idx_wallee_terminals_location").on(table.tenantId, table.locationId, table.isActive),
+]);
+
+export const walleeWebhookEvents = pgTable("wallee_webhook_events", {
+  id: text("id").primaryKey(),
+  profileId: text("profile_id").notNull().references(() => walleePaymentProfiles.id, { onDelete: "cascade" }),
+  eventId: text("event_id").notNull(),
+  entityId: text("entity_id"),
+  listenerEntityId: text("listener_entity_id"),
+  listenerEntityTechnicalName: text("listener_entity_technical_name"),
+  payloadJson: jsonb("payload_json").notNull(),
+  signature: text("signature"),
+  status: text("status").notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  error: text("error"),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("idx_wallee_webhook_events_event").on(table.profileId, table.eventId),
+  index("idx_wallee_webhook_events_status").on(table.profileId, table.status, table.createdAt),
+]);
+
 export const dayCloses = pgTable("day_closes", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),

@@ -1,10 +1,16 @@
 import type { PaymentProviderRequest, PaymentProviderResult } from "./paymentProviderTypes.js";
+import { startWalleeCloudTillPayment } from "./walleeCloudTillProvider.js";
 import { startWalleeLtiSimulatorPayment } from "./walleeLtiSimulator.js";
 
-export function startWalleeLtiPayment(request: PaymentProviderRequest): PaymentProviderResult {
-  // TODO(wallee-lti): Replace the simulator call with the official LTI TCP/XML exchange
-  // once the physical terminal model and exact LTI documentation version are known.
-  // Do not guess message names or success states here; map the documented terminal
-  // response into PaymentProviderResult and let localMaster complete the payment.
+export async function startWalleeLtiPayment(request: PaymentProviderRequest): Promise<PaymentProviderResult> {
+  if (request.simulator_outcome) {
+    return startWalleeLtiSimulatorPayment(request);
+  }
+
+  const cloudResult = await startWalleeCloudTillPayment(request);
+  if (cloudResult.authorized || cloudResult.failure_reason !== "LocalMaster is not paired with relay for wallee terminal payments.") {
+    return cloudResult;
+  }
+
   return startWalleeLtiSimulatorPayment(request);
 }

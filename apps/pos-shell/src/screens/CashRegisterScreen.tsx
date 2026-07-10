@@ -1,11 +1,8 @@
 ﻿import {
   ArrowLeftIcon,
   BoxesIcon,
-  DoorOpenIcon,
-  EllipsisIcon,
   LayoutGridIcon,
   ListIcon,
-  ShoppingBagIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -42,6 +39,7 @@ import {
   buildSelectedBasketVariants,
   getDefaultSelections,
 } from "./cash-register/variantSelection";
+import { PosBottomNav } from "./PosBottomNav";
 
 type CashRegisterScreenProps = {
   serviceMode: LocationServiceMode;
@@ -49,17 +47,6 @@ type CashRegisterScreenProps = {
   onNavigate: (screen: PosScreen) => void;
   onOrderCreated: () => void;
 };
-
-const navItems = [
-  { label: "Kasse", icon: ShoppingBagIcon, screen: "cash", active: true },
-  { label: "Mehr", icon: EllipsisIcon, screen: "more", active: false },
-  { label: "Abmelden", icon: DoorOpenIcon, screen: "logout", active: false },
-] as const satisfies readonly {
-  label: string;
-  icon: typeof ShoppingBagIcon;
-  screen: PosScreen;
-  active: boolean;
-}[];
 
 const allCategoryLabel = "Alle";
 type CatalogViewMode = "grid" | "list";
@@ -419,7 +406,6 @@ export function CashRegisterScreen({
       setOrderNotice(`Auftrag ${order.order_number} wurde gespeichert.`);
       onOrderCreated();
     } catch (error) {
-      console.error("Could not create order snapshot.", error);
       setOrderNotice(
         error instanceof Error
           ? error.message
@@ -475,6 +461,10 @@ export function CashRegisterScreen({
             ...paymentRequest,
           });
 
+      if (payment.lifecycle_state !== "completed") {
+        throw new Error(payment.failure_reason ?? "Zahlung wurde nicht abgeschlossen.");
+      }
+
       setBasketLines([]);
       setIsPaymentScreenOpen(false);
       setOrderNotice(
@@ -482,7 +472,6 @@ export function CashRegisterScreen({
       );
       onOrderCreated();
     } catch (error) {
-      console.error("Could not complete mock payment.", error);
       setIsPaymentScreenOpen(false);
       setOrderNotice(
         error instanceof Error
@@ -687,21 +676,7 @@ export function CashRegisterScreen({
         </div>
       ) : null}
 
-      <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
-        {navItems.map(({ label, icon: Icon, screen, active }) => (
-          <button
-            key={label}
-            className={[
-              "flex flex-col items-center justify-center gap-0.5 text-xs font-black uppercase transition active:bg-slate-100",
-              active ? "text-indigo-800" : "text-slate-500",
-            ].join(" ")}
-            onClick={() => onNavigate(screen)}
-          >
-            <Icon className="size-5" />
-            {label}
-          </button>
-        ))}
-      </footer>
+      <PosBottomNav activeScreen="cash" onNavigate={onNavigate} />
 
       <VariantSelectionDrawer
         open={selectedProduct !== null}

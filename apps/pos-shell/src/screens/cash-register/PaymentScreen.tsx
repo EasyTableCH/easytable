@@ -1,8 +1,9 @@
-import { ArrowLeftIcon, BanknoteIcon, CreditCardIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, BanknoteIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
 import { cn } from "@easytable/ui/lib/utils";
+import logoUrl from "@easytable/ui/assets/Logo table.svg";
 
 import chipUrl from "../../assets/Chip.svg";
 import { TouchNumberPad } from "../../components/TouchNumberPad";
@@ -46,6 +47,25 @@ export function PaymentScreen({
     }
 
     onSelectMethod({ payment_method: method });
+  }
+
+  if (isSubmitting) {
+    return (
+      <main className="flex h-svh touch-manipulation flex-col items-center justify-center overflow-hidden bg-[#f6f7fb] px-6 text-center text-slate-950">
+        <div className="flex size-28 items-center justify-center rounded-md bg-white shadow-xl shadow-slate-900/10 ring-1 ring-slate-200">
+          <img src={logoUrl} alt="EasyTable" className="h-20 w-20 object-contain" />
+        </div>
+        <div className="mt-8 grid gap-2">
+          <p className="text-2xl font-black text-slate-950">Zahlung wird verarbeitet</p>
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+            {formatChf(total)}
+          </p>
+        </div>
+        <div className="mt-8 h-1.5 w-48 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full w-1/2 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-indigo-500" />
+        </div>
+      </main>
+    );
   }
 
   if (paymentView === "cash") {
@@ -183,26 +203,18 @@ export function PaymentScreen({
         <div className="grid w-full max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
           <PaymentMethodCard
             method="CASH"
-            title="CASH"
+            title="BAR"
             eyebrow="Bezahlmethode"
             description="Schnelle Abwicklung"
             disabled={isSubmitting}
             onSelectMethod={handleMethodSelect}
           />
           <PaymentMethodCard
-            method="CARD_MANUAL"
+            method="WALLEE_TERMINAL"
             title="KARTE"
             eyebrow="Kredit / Debit"
-            description="Terminal Mock"
+            description={isWalleeTerminalEnabled ? "Terminalzahlung" : "Terminal nicht konfiguriert"}
             dark
-            disabled={isSubmitting}
-            onSelectMethod={handleMethodSelect}
-          />
-          <PaymentMethodCard
-            method="WALLEE_TERMINAL"
-            title="WALLEE"
-            eyebrow="Terminal"
-            description={isWalleeTerminalEnabled ? "LTI vorbereitet" : "Nicht konfiguriert"}
             disabled={isSubmitting || !isWalleeTerminalEnabled}
             onSelectMethod={handleMethodSelect}
           />
@@ -255,8 +267,6 @@ function PaymentMethodCard({
             >
               {dark ? (
                 <img src={chipUrl} alt="" className="h-12 w-14 object-contain" />
-              ) : method === "WALLEE_TERMINAL" ? (
-                <CreditCardIcon className="size-9 text-indigo-600" />
               ) : (
                 <BanknoteIcon className="size-9 text-emerald-600" />
               )}

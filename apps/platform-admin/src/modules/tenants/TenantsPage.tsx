@@ -6,7 +6,9 @@ import {
   createLocationUser,
   createLocalMasterPairingSession,
   createOutputStation,
+  createWalleePaymentTerminal,
   deleteOutputStation,
+  deleteWalleePaymentTerminal,
   archiveLocationUser,
   createTenant,
   deleteLocationUser,
@@ -16,22 +18,29 @@ import {
   loadLocations,
   loadOutputStations,
   loadTenants,
+  loadWalleePaymentProfile,
+  loadWalleePaymentTerminals,
   resetLocationUserPassword,
   resetLocationUserPin,
+  saveWalleePaymentProfile,
   updateLocation,
   updateLocationUser,
   updateOutputStation,
   updateTenant,
+  updateWalleePaymentTerminal,
   type Location,
   type LocalMasterPairingSession,
   type OutputStation,
   type Tenant,
   type TenantLocationUser,
+  type WalleePaymentProfile,
+  type WalleePaymentTerminal,
 } from "../../lib/relay-sync-api";
 import { LocationUsersSection } from "./components/LocationUsersSection";
 import { LocationsSection } from "./components/LocationsSection";
 import { OutputStationsSection } from "./components/OutputStationsSection";
 import { TenantsSection } from "./components/TenantsSection";
+import { WalleePaymentsSection } from "./components/WalleePaymentsSection";
 
 const pairingSessionStorageKey = "easytable.platformAdmin.localMasterPairingSessions";
 
@@ -40,6 +49,8 @@ export function TenantsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [outputStations, setOutputStations] = useState<OutputStation[]>([]);
   const [locationUsers, setLocationUsers] = useState<TenantLocationUser[]>([]);
+  const [walleeProfile, setWalleeProfile] = useState<WalleePaymentProfile | null>(null);
+  const [walleeTerminals, setWalleeTerminals] = useState<WalleePaymentTerminal[]>([]);
   const [pairingSessions, setPairingSessions] = useState<Record<string, LocalMasterPairingSession | undefined>>(() => readCachedPairingSessions());
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
@@ -48,6 +59,7 @@ export function TenantsPage() {
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [isLoadingStations, setIsLoadingStations] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingWallee, setIsLoadingWallee] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const filteredTenants = useMemo(() => {
@@ -166,6 +178,25 @@ export function TenantsPage() {
     }
   }
 
+  async function refreshWalleePayments(tenantId = selectedTenant?.id, locationId = selectedLocation?.id) {
+    if (!tenantId || !locationId) {
+      return;
+    }
+
+    setIsLoadingWallee(true);
+    setError(null);
+
+    try {
+      const profile = await loadWalleePaymentProfile(tenantId, locationId);
+      setWalleeProfile(profile);
+      setWalleeTerminals(profile ? await loadWalleePaymentTerminals(tenantId, locationId) : []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Wallee Payments konnten nicht geladen werden.");
+    } finally {
+      setIsLoadingWallee(false);
+    }
+  }
+
   async function runStationAction(action: () => Promise<void>) {
     if (!selectedTenant || !selectedLocation) {
       return;
@@ -195,6 +226,22 @@ export function TenantsPage() {
       return result;
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "User-Aktion fehlgeschlagen.");
+      throw actionError;
+    }
+  }
+
+  async function runWalleeAction(action: () => Promise<void>) {
+    if (!selectedTenant || !selectedLocation) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await action();
+      await refreshWalleePayments(selectedTenant.id, selectedLocation.id);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Wallee-Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -244,11 +291,14 @@ export function TenantsPage() {
     if (!selectedTenant || !selectedLocation) {
       setOutputStations([]);
       setLocationUsers([]);
+      setWalleeProfile(null);
+      setWalleeTerminals([]);
       return;
     }
 
     void refreshOutputStations(selectedTenant.id, selectedLocation.id);
     void refreshLocationUsers(selectedTenant.id, selectedLocation.id);
+    void refreshWalleePayments(selectedTenant.id, selectedLocation.id);
     void refreshPairingSession(selectedTenant.id, selectedLocation.id);
   }, [selectedTenant?.id, selectedLocation?.id]);
 
@@ -310,6 +360,35 @@ export function TenantsPage() {
         }
         stations={outputStations}
         tenant={selectedTenant}
+      />
+
+      <WalleePaymentsSection
+        isLoading={isLoadingWallee}
+        location={selectedLocation}
+        onCreateTerminal={(input) =>
+          runWalleeAction(async () =>
+            void (await createWalleePaymentTerminal(selectedTenant?.id ?? "", selectedLocation?.id ?? "", input))
+          )
+        }
+        onDeleteTerminal={(terminalId) =>
+          runWalleeAction(async () =>
+            void (await deleteWalleePaymentTerminal(selectedTenant?.id ?? "", selectedLocation?.id ?? "", terminalId))
+          )
+        }
+        onReload={() => refreshWalleePayments()}
+        onSaveProfile={(input) =>
+          runWalleeAction(async () =>
+            void (await saveWalleePaymentProfile(selectedTenant?.id ?? "", selectedLocation?.id ?? "", input))
+          )
+        }
+        onUpdateTerminal={(terminalId, input) =>
+          runWalleeAction(async () =>
+            void (await updateWalleePaymentTerminal(selectedTenant?.id ?? "", selectedLocation?.id ?? "", terminalId, input))
+          )
+        }
+        profile={walleeProfile}
+        tenant={selectedTenant}
+        terminals={walleeTerminals}
       />
 
       <LocationUsersSection

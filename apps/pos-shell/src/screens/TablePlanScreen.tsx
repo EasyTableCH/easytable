@@ -1,4 +1,3 @@
-﻿import { DoorOpenIcon, EllipsisIcon, ReceiptTextIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -18,22 +17,12 @@ import type {
   TableLayoutFloor,
   TableLayoutTable,
 } from "../lib/pos-types";
+import { PosBottomNav } from "./PosBottomNav";
 
 type TablePlanScreenProps = {
   onNavigate: (screen: PosScreen) => void;
   onSelectTable: (context: TableContext) => void;
 };
-
-const navItems = [
-  { label: "Kasse", icon: ReceiptTextIcon, screen: "tables", active: true },
-  { label: "Mehr", icon: EllipsisIcon, screen: "more", active: false },
-  { label: "Abmelden", icon: DoorOpenIcon, screen: "logout", active: false },
-] as const satisfies readonly {
-  label: string;
-  icon: typeof ReceiptTextIcon;
-  screen: PosScreen;
-  active: boolean;
-}[];
 
 const tablePlanReloadEvents = new Set(["ORDER_CREATED", "TABLE_UPDATED"]);
 
@@ -227,22 +216,7 @@ export function TablePlanScreen({
         )}
       </section>
 
-      <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
-        {navItems.map(({ label, icon: Icon, screen, active }) => (
-          <Button
-            key={label}
-            variant="ghost"
-            className={cn(
-              "flex h-full flex-col items-center justify-center gap-0.5 rounded-none text-xs font-black uppercase transition active:bg-slate-100",
-              active ? "text-indigo-800" : "text-slate-500",
-            )}
-            onClick={() => onNavigate(screen)}
-          >
-            <Icon className="size-5" />
-            {label}
-          </Button>
-        ))}
-      </footer>
+      <PosBottomNav activeScreen="tables" onNavigate={onNavigate} />
     </main>
   );
 }

@@ -14,6 +14,7 @@
     payments with a terminal (not yet arrived)
     - We should analyze the wallee docs with wallee skill we made for terminal integration and discuss how we channel subtenants in the future for walle we will be a platform so we have subtenants
     - We need to think trough how we bring the "whole" system flowing
+    - Future option: if wallee Local Network API is enabled on a terminal, relaySyncApi could send a relay command to the tenant's localMaster and localMaster could trigger the local terminal payment directly on the LAN. Keep Cloud API as V1, but evaluate this as the local-first/offline-friendly payment path.
 
 
 - [ ] check if bidirectional syncs really happen
@@ -24,3 +25,7 @@
 
 - [ ] Analytics owner module in staff
     - When hovering over the diagrams they show for example "700" instead of 7.00CHF because it uses raw Rappen number instead
+
+- [ ] Variant for products adding / editing is completely missing
+    - add in owner staff module for catalog and products ability to give variantgroups with items to products / categories
+    - products take from parent category if assigned, if set on product only product has it

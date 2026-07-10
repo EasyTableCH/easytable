@@ -64,9 +64,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
           setCutoverTime(configuredCutover);
           setBusinessDate(currentBusinessDate.business_date);
         }
-      } catch (error) {
-        console.warn("Could not load POS settings for day close.", error);
-
+      } catch {
         if (isMounted) {
           setBusinessDate(new Date().toISOString().slice(0, 10));
         }
@@ -104,9 +102,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
               loadedPreview.expected_cash,
           );
         }
-      } catch (error) {
-        console.error("Could not load day close preview.", error);
-
+      } catch {
         if (isMounted) {
           setPreview(null);
           setNotice("Kassenabschluss konnte nicht berechnet werden.");
@@ -148,8 +144,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
         business_day_cutover_time: cutoverTime,
       });
       setPreview(refreshedPreview);
-    } catch (error) {
-      console.error("Could not save day close.", error);
+    } catch {
       setNotice("Kassenabschluss konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);

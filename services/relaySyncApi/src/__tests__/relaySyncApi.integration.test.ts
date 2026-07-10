@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHmac, createSign, generateKeyPairSync, randomUUID } from "node:crypto";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import Fastify from "fastify";
 
@@ -588,6 +588,169 @@ test("platform administrator API requires auth and manages cloud admins", { skip
   }
 });
 
+test("wallee profile and terminals are tenant-location scoped and redact secrets", { skip: !hasDatabase }, async () => {
+  const ctx = assertModules();
+  const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
+  process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
+  const seed = await seedTenantLocation(ctx);
+
+  try {
+    const profile = await ctx.upsertWalleePaymentProfile(seed.tenantId, seed.locationId, {
+      space_id: "space_" + seed.suffix,
+      application_user_id: "app_user_" + seed.suffix,
+      application_user_secret: "secret_" + seed.suffix,
+      webhook_signature_key: "webhook_" + seed.suffix,
+      enabled: true
+    });
+
+    assert.equal(profile.space_id, "space_" + seed.suffix);
+    assert.equal(profile.has_application_user_secret, true);
+    assert.equal(profile.has_webhook_signature_key, true);
+    assert.equal("application_user_secret" in profile, false);
+
+    const storedProfile = (await ctx.db
+      .select()
+      .from(ctx.schema.walleePaymentProfiles)
+      .where(ctx.eq(ctx.schema.walleePaymentProfiles.id, profile.id))
+      .limit(1))[0];
+    assert.ok(storedProfile);
+    assert.notEqual(storedProfile.applicationUserSecretEncrypted, "secret_" + seed.suffix);
+
+    const terminal = await ctx.createWalleePaymentTerminal(seed.tenantId, seed.locationId, {
+      display_name: "PAX Dev",
+      terminal_id: "terminal_" + seed.suffix,
+      terminal_identifier: null,
+      is_default: true,
+      is_active: true
+    });
+
+    assert.equal(terminal.is_default, true);
+    assert.equal((await ctx.listWalleePaymentTerminals(seed.tenantId, seed.locationId)).length, 1);
+
+    await ctx.deleteWalleePaymentTerminal(seed.tenantId, seed.locationId, terminal.id);
+    assert.equal((await ctx.listWalleePaymentTerminals(seed.tenantId, seed.locationId)).length, 0);
+  } finally {
+    restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
+  }
+});
+
+test("localMaster wallee payment uses configured terminal and maps gateway result", { skip: !hasDatabase }, async () => {
+  const ctx = assertModules();
+  const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
+  process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
+  const seed = await seedTenantLocation(ctx);
+
+  try {
+    await ctx.upsertWalleePaymentProfile(seed.tenantId, seed.locationId, {
+      space_id: "space_" + seed.suffix,
+      application_user_id: "app_user_" + seed.suffix,
+      application_user_secret: "secret_" + seed.suffix,
+      enabled: true
+    });
+    await ctx.createWalleePaymentTerminal(seed.tenantId, seed.locationId, {
+      display_name: "PAX Dev",
+      terminal_id: "terminal_" + seed.suffix,
+      is_default: true,
+      is_active: true
+    });
+    const session = await ctx.createLocalMasterPairingSession(seed.tenantId, seed.locationId);
+    const pairing = await ctx.pairLocalMaster({
+      setup_code: session.setup_code ?? "",
+      instance_id: "lm_" + seed.suffix
+    });
+
+    ctx.setWalleeTerminalGatewayForTests({
+      async performTransaction(input) {
+        assert.equal(input.profile.spaceId, "space_" + seed.suffix);
+        assert.equal(input.applicationUserSecret, "secret_" + seed.suffix);
+        assert.equal(input.terminal.terminalId, "terminal_" + seed.suffix);
+        assert.equal(input.request.amount, 1234);
+        return {
+          provider: "WALLEE_CLOUD_TILL",
+          provider_transaction_id: "txn_" + seed.suffix,
+          provider_status: "AUTHORIZED",
+          authorized: true,
+          failure_reason: null
+        };
+      }
+    });
+
+    const result = await ctx.startLocalMasterWalleeTerminalPayment(pairing.relay_token, {
+      request_id: "pay_" + seed.suffix,
+      amount: 1234,
+      currency: "CHF"
+    });
+
+    assert.equal(result.authorized, true);
+    assert.equal(result.provider_transaction_id, "txn_" + seed.suffix);
+  } finally {
+    ctx.setWalleeTerminalGatewayForTests(null);
+    restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
+  }
+});
+
+test("wallee webhooks verify signatures and dedupe event ids", { skip: !hasDatabase }, async () => {
+  const ctx = assertModules();
+  const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
+  process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
+  const seed = await seedTenantLocation(ctx);
+
+  try {
+    const profile = await ctx.upsertWalleePaymentProfile(seed.tenantId, seed.locationId, {
+      space_id: "space_" + seed.suffix,
+      application_user_id: "app_user_" + seed.suffix,
+      application_user_secret: "secret_" + seed.suffix,
+      webhook_signature_key: "webhook_" + seed.suffix,
+      enabled: true
+    });
+    const payload = { eventId: "evt_" + seed.suffix, entityId: "txn_" + seed.suffix };
+    const signature = "sha256=" + createHmac("sha256", "webhook_" + seed.suffix).update(JSON.stringify(payload)).digest("hex");
+
+    const first = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
+    const second = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
+
+    assert.deepEqual(first, { accepted: true, duplicate: false, event_id: payload.eventId });
+    assert.deepEqual(second, { accepted: true, duplicate: true, event_id: payload.eventId });
+    await assert.rejects(
+      () => ctx.acceptWalleeWebhook(profile.id, { eventId: "evt_bad_" + seed.suffix }, "sha256=00"),
+      /Invalid wallee webhook signature/
+    );
+  } finally {
+    restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
+  }
+});
+
+test("wallee webhook signatures support public-key verification", { skip: !hasDatabase }, async () => {
+  const ctx = assertModules();
+  const previousKey = process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY;
+  process.env.WALLEE_CREDENTIAL_ENCRYPTION_KEY = "test-wallee-key";
+  const seed = await seedTenantLocation(ctx);
+  const keyPair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = keyPair.publicKey.export({ type: "spki", format: "pem" }).toString();
+
+  try {
+    const profile = await ctx.upsertWalleePaymentProfile(seed.tenantId, seed.locationId, {
+      space_id: "space_" + seed.suffix,
+      application_user_id: "app_user_" + seed.suffix,
+      application_user_secret: "secret_" + seed.suffix,
+      webhook_signature_key: publicKey,
+      enabled: true
+    });
+    const payload = { eventId: "evt_public_" + seed.suffix, entityId: "txn_" + seed.suffix };
+    const signer = createSign("sha256");
+    signer.update(JSON.stringify(payload));
+    signer.end();
+    const signature = "algorithm=SHA256withECDSA,keyId=test,signature=" + signer.sign(keyPair.privateKey).toString("base64");
+
+    const result = await ctx.acceptWalleeWebhook(profile.id, payload, signature);
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.duplicate, false);
+  } finally {
+    restoreEnv("WALLEE_CREDENTIAL_ENCRYPTION_KEY", previousKey);
+  }
+});
+
 async function loadModules() {
   const dbClient = await import("../db/client.js");
   const schema = await import("../db/schema.js");
@@ -599,6 +762,7 @@ async function loadModules() {
   const adminRoutes = await import("../routes/adminRoutes.js");
   const userStore = await import("../store/userStore.js");
   const accountSetupStore = await import("../store/accountSetupStore.js");
+  const walleePaymentStore = await import("../store/walleePaymentStore.js");
   const email = await import("../services/email/resend.js");
   const nats = await import("../lib/nats.js");
   const auth = await import("../auth.js");
@@ -614,6 +778,7 @@ async function loadModules() {
     ...adminRoutes,
     ...userStore,
     ...accountSetupStore,
+    ...walleePaymentStore,
     ...email,
     ...nats,
     auth: auth.auth,
@@ -700,6 +865,16 @@ async function cleanupCreatedTenants(ctx: NonNullable<typeof modules>) {
   const userIds = userRows.map((row) => row.userId);
 
   await ctx.db.delete(ctx.schema.relayCommands).where(ctx.inArray(ctx.schema.relayCommands.tenantId, tenantIds));
+  const profileRows = await ctx.db
+    .select({ id: ctx.schema.walleePaymentProfiles.id })
+    .from(ctx.schema.walleePaymentProfiles)
+    .where(ctx.inArray(ctx.schema.walleePaymentProfiles.tenantId, tenantIds));
+  const profileIds = profileRows.map((row) => row.id);
+  if (profileIds.length > 0) {
+    await ctx.db.delete(ctx.schema.walleeWebhookEvents).where(ctx.inArray(ctx.schema.walleeWebhookEvents.profileId, profileIds));
+  }
+  await ctx.db.delete(ctx.schema.walleePaymentTerminals).where(ctx.inArray(ctx.schema.walleePaymentTerminals.tenantId, tenantIds));
+  await ctx.db.delete(ctx.schema.walleePaymentProfiles).where(ctx.inArray(ctx.schema.walleePaymentProfiles.tenantId, tenantIds));
   await ctx.db.delete(ctx.schema.localMasterCredentials).where(ctx.inArray(ctx.schema.localMasterCredentials.tenantId, tenantIds));
   await ctx.db.delete(ctx.schema.localMasterPairingSessions).where(ctx.inArray(ctx.schema.localMasterPairingSessions.tenantId, tenantIds));
   await ctx.db.delete(ctx.schema.catalogOutputStations).where(ctx.inArray(ctx.schema.catalogOutputStations.tenantId, tenantIds));
@@ -713,6 +888,14 @@ async function cleanupCreatedTenants(ctx: NonNullable<typeof modules>) {
   await ctx.db.delete(ctx.schema.tenants).where(ctx.inArray(ctx.schema.tenants.id, tenantIds));
   createdTenantIds.clear();
   await cleanupCreatedPlatformAdmins(ctx);
+}
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 async function cleanupCreatedPlatformAdmins(ctx: NonNullable<typeof modules>) {

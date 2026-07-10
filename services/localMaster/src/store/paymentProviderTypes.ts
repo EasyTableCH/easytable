@@ -1,6 +1,6 @@
 import type { BasketLine, TableContext, WalleeTerminalSimulatorOutcome } from "../types.js";
 
-export type PaymentProviderCode = "LOCAL" | "WALLEE_LTI" | "WALLEE_LTI_SIMULATOR";
+export type PaymentProviderCode = "LOCAL" | "WALLEE_LTI" | "WALLEE_LTI_SIMULATOR" | "WALLEE_CLOUD_TILL";
 
 export type PaymentProviderRequest = {
   request_id: string;
@@ -18,4 +18,3 @@ export type PaymentProviderResult = {
   authorized: boolean;
   failure_reason: string | null;
 };
-

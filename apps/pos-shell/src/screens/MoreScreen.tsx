@@ -1,10 +1,7 @@
 ﻿import {
   ArrowLeftIcon,
-  DoorOpenIcon,
-  EllipsisIcon,
   LinkIcon,
   PrinterIcon,
-  ReceiptTextIcon,
   RefreshCwIcon,
   RouterIcon,
   SaveIcon,
@@ -64,22 +61,12 @@ import type {
   TerminalPairingConfig
 } from "../lib/pos-types";
 import { CashCloseScreen } from "./CashCloseScreen";
+import { PosBottomNav } from "./PosBottomNav";
 import { StornoScreen } from "./StornoScreen";
 
 type MoreScreenProps = {
   onNavigate: (screen: PosScreen) => void;
 };
-
-const navItems = [
-  { label: "Kasse", icon: ReceiptTextIcon, screen: "tables", active: false },
-  { label: "Mehr", icon: EllipsisIcon, screen: "more", active: true },
-  { label: "Abmelden", icon: DoorOpenIcon, screen: "logout", active: false },
-] as const satisfies readonly {
-  label: string;
-  icon: typeof ReceiptTextIcon;
-  screen: PosScreen;
-  active: boolean;
-}[];
 
 const moreItems = [
   {
@@ -226,22 +213,7 @@ export function MoreScreen({ onNavigate }: MoreScreenProps) {
         ) : null}
       </section>
 
-      <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
-        {navItems.map(({ label, icon: Icon, screen, active }) => (
-          <Button
-            key={label}
-            variant="ghost"
-            className={cn(
-              "flex h-full flex-col items-center justify-center gap-0.5 rounded-none text-xs font-black uppercase transition active:bg-slate-100",
-              active ? "text-indigo-800" : "text-slate-500",
-            )}
-            onClick={() => onNavigate(screen)}
-          >
-            <Icon className="size-5" />
-            {label}
-          </Button>
-        ))}
-      </footer>
+      <PosBottomNav activeScreen="more" onNavigate={onNavigate} />
     </main>
   );
 }

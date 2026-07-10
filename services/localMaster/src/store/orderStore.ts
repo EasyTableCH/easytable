@@ -259,7 +259,7 @@ function completeMockPaymentUnchecked(request: CompleteMockPaymentRequest, reque
   };
 }
 
-export function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRequest): PaymentResult {
+export async function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRequest): Promise<PaymentResult> {
   validateWalleeTerminalPaymentRequest(request);
 
   const requestId = request.request_id.trim();
@@ -275,7 +275,7 @@ export function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRe
   }
 
   try {
-    const result = startWalleeTerminalPaymentUnchecked(request, requestId);
+    const result = await startWalleeTerminalPaymentUnchecked(request, requestId);
     if (result.payment.lifecycle_state === "completed") {
       appendOutboxEvent("PAYMENT_COMPLETED", result.payment.payment_id, result.payment);
     }
@@ -285,10 +285,10 @@ export function startWalleeTerminalPayment(request: StartWalleeTerminalPaymentRe
   }
 }
 
-function startWalleeTerminalPaymentUnchecked(
+async function startWalleeTerminalPaymentUnchecked(
   request: StartWalleeTerminalPaymentRequest,
   requestId: string
-): PaymentResult {
+): Promise<PaymentResult> {
   const existingPayment = payments.find((payment) => payment.requestId === requestId);
 
   if (existingPayment) {
@@ -302,7 +302,7 @@ function startWalleeTerminalPaymentUnchecked(
   const now = Date.now();
   const totals = calculateOrderTotals(request.lines);
   const terminalId = request.terminal_id?.trim() || null;
-  const providerResult = startWalleeLtiPayment({
+  const providerResult = await startWalleeLtiPayment({
     request_id: requestId,
     amount: totals.total,
     terminal_id: terminalId,

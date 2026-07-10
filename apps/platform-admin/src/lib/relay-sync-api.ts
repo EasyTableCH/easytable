@@ -186,6 +186,50 @@ export type OutputStationInput = {
   sort_order: number;
 };
 
+export type WalleePaymentProfile = {
+  id: string;
+  tenant_id: string;
+  location_id: string | null;
+  space_id: string;
+  application_user_id: string;
+  has_application_user_secret: boolean;
+  has_webhook_signature_key: boolean;
+  mode: "CLOUD_TILL_LONG_POLLING";
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WalleePaymentProfileInput = {
+  space_id: string;
+  application_user_id: string;
+  application_user_secret?: string | null;
+  webhook_signature_key?: string | null;
+  enabled: boolean;
+};
+
+export type WalleePaymentTerminal = {
+  id: string;
+  profile_id: string;
+  tenant_id: string;
+  location_id: string | null;
+  display_name: string;
+  terminal_id: string | null;
+  terminal_identifier: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WalleePaymentTerminalInput = {
+  display_name: string;
+  terminal_id: string | null;
+  terminal_identifier: string | null;
+  is_default: boolean;
+  is_active: boolean;
+};
+
 const configuredUrl = import.meta.env.VITE_RELAY_SYNC_API_URL as string | undefined;
 
 export function getRelaySyncApiUrl() {
@@ -325,6 +369,62 @@ export function loadOutputStations(tenantId: string, locationId: string) {
   );
 }
 
+export function loadWalleePaymentProfile(tenantId: string, locationId: string) {
+  return readJson<WalleePaymentProfile | null>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/payment/wallee-profile",
+    null,
+  );
+}
+
+export function saveWalleePaymentProfile(tenantId: string, locationId: string, input: WalleePaymentProfileInput) {
+  return writeJson<WalleePaymentProfile>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/payment/wallee-profile",
+    "PUT",
+    input,
+  );
+}
+
+export function loadWalleePaymentTerminals(tenantId: string, locationId: string) {
+  return readJson<WalleePaymentTerminal[]>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/payment/wallee-terminals",
+    [],
+  );
+}
+
+export function createWalleePaymentTerminal(tenantId: string, locationId: string, input: WalleePaymentTerminalInput) {
+  return writeJson<WalleePaymentTerminal>(
+    "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/payment/wallee-terminals",
+    "POST",
+    input,
+  );
+}
+
+export function updateWalleePaymentTerminal(tenantId: string, locationId: string, terminalId: string, input: Partial<WalleePaymentTerminalInput>) {
+  return writeJson<WalleePaymentTerminal>(
+    "/api/admin/tenants/" +
+      encodeURIComponent(tenantId) +
+      "/locations/" +
+      encodeURIComponent(locationId) +
+      "/payment/wallee-terminals/" +
+      encodeURIComponent(terminalId),
+    "PATCH",
+    input,
+  );
+}
+
+export function deleteWalleePaymentTerminal(tenantId: string, locationId: string, terminalId: string) {
+  return writeJson<void>(
+    "/api/admin/tenants/" +
+      encodeURIComponent(tenantId) +
+      "/locations/" +
+      encodeURIComponent(locationId) +
+      "/payment/wallee-terminals/" +
+      encodeURIComponent(terminalId),
+    "DELETE",
+    undefined,
+  );
+}
+
 export function loadLocationUsers(tenantId: string, locationId: string) {
   return readJson<TenantLocationUser[]>(
     "/api/admin/tenants/" + encodeURIComponent(tenantId) + "/locations/" + encodeURIComponent(locationId) + "/users",
@@ -460,7 +560,7 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
   return parseJsonResponse(response, fallback);
 }
 
-async function writeJson<T>(path: string, method: "POST" | "PATCH" | "DELETE", body: unknown): Promise<T> {
+async function writeJson<T>(path: string, method: "POST" | "PATCH" | "PUT" | "DELETE", body: unknown): Promise<T> {
   const response = await fetch(`${getRelaySyncApiUrl()}${path}`, {
     method,
     headers: body === undefined ? createHeaders() : createHeaders({ "Content-Type": "application/json" }),

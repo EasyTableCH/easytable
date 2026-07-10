@@ -245,6 +245,81 @@ export type LocalMasterFinancialEventsResponse = {
   failed_events: Array<{ id: string; error: string }>;
 };
 
+export type WalleePaymentMode = "CLOUD_TILL_LONG_POLLING";
+
+export type WalleePaymentProfile = {
+  id: string;
+  tenant_id: string;
+  location_id: string | null;
+  space_id: string;
+  application_user_id: string;
+  has_application_user_secret: boolean;
+  has_webhook_signature_key: boolean;
+  mode: WalleePaymentMode;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WalleePaymentProfileUpsertRequest = {
+  space_id: string;
+  application_user_id: string;
+  application_user_secret?: string | null;
+  webhook_signature_key?: string | null;
+  enabled?: boolean;
+};
+
+export type WalleePaymentTerminal = {
+  id: string;
+  profile_id: string;
+  tenant_id: string;
+  location_id: string | null;
+  display_name: string;
+  terminal_id: string | null;
+  terminal_identifier: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WalleePaymentTerminalCreateRequest = {
+  display_name: string;
+  terminal_id?: string | null;
+  terminal_identifier?: string | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type WalleePaymentTerminalUpdateRequest = Partial<WalleePaymentTerminalCreateRequest>;
+
+export type LocalMasterPaymentConfig = {
+  wallee: {
+    enabled: boolean;
+    mode: WalleePaymentMode;
+    profile_id: string;
+    space_id: string;
+    terminals: WalleePaymentTerminal[];
+  } | null;
+};
+
+export type LocalMasterWalleeTerminalPaymentRequest = {
+  request_id: string;
+  amount: number;
+  currency?: string;
+  terminal_id?: string | null;
+  lines?: unknown[];
+  table_context?: unknown;
+};
+
+export type LocalMasterWalleeTerminalPaymentResponse = {
+  provider: "WALLEE_CLOUD_TILL";
+  provider_transaction_id: string | null;
+  provider_status: "AUTHORIZED" | "DECLINED" | "CANCELLED" | "TIMEOUT" | "UNKNOWN";
+  authorized: boolean;
+  failure_reason: string | null;
+};
+
 export type StaffOrderSnapshotRelayRequest = {
   request_id: string;
   lines: unknown[];
