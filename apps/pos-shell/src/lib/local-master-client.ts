@@ -49,6 +49,7 @@ declare global {
 }
 
 const terminalConfigStorageKey = "easytable.pos.terminalConfig";
+const posClientApiVersion = 1;
 const configuredUrl =
   (import.meta.env.VITE_LOCAL_MASTER_URL as string | undefined) ??
   (import.meta.env.VITE_LOCAL_REALTIME_URL as string | undefined);
@@ -67,6 +68,8 @@ export async function initializeLocalMasterClient() {
 
       if (identity.instance_id !== storedConfig.localMasterInstanceId) {
         localMasterBlockedReason = "Andere LocalMaster Instanz erkannt. Neu-Kopplung erforderlich.";
+      } else if (posClientApiVersion < identity.minimum_client_api_version || posClientApiVersion > identity.maximum_client_api_version) {
+        localMasterBlockedReason = "POS und LocalMaster Versionen sind nicht kompatibel. Update erforderlich.";
       } else {
         localMasterBlockedReason = null;
       }

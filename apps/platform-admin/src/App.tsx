@@ -94,7 +94,7 @@ function AuthenticatedApp() {
   }
 
   const user = authDetails?.user ?? sessionData.user;
-  const isPlatformAdmin = authDetails?.user.role === "platform_admin" && authDetails.tenants.length === 0;
+  const isPlatformAdmin = authDetails?.user.role === "platform_admin";
   const handleLogout = async () => {
     await signOut();
     window.location.reload();
@@ -108,11 +108,6 @@ function AuthenticatedApp() {
           Dieser Bereich ist ausschliesslich fuer Plattform-Administratoren reserviert. Dein Account ({user.email}) verfuegt
           nicht ueber die erforderlichen Rechte.
         </p>
-        {authDetails?.tenants.length ? (
-          <p className="max-w-md text-sm text-muted-foreground">
-            Dieser Account ist einem Tenant zugeordnet und gilt deshalb nicht als Platform-Admin.
-          </p>
-        ) : null}
         <button
           className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           onClick={handleLogout}

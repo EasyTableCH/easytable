@@ -21,6 +21,7 @@
     "build:platform-admin": "npm run build -w apps/platform-admin",
     "build:master": "npm run build -w services/localMaster",
     "build:realtime": "npm run build:master",
+    "build:master-station": "npm run build:staff && npm run build:master",
     "build:relay-sync": "npm run build -w services/relaySyncApi",
     "test:master": "npm run test -w services/localMaster",
     "test:relay": "npm run test -w services/relaySyncApi",

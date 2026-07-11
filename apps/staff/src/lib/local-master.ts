@@ -441,12 +441,32 @@ type LocalMasterIdentity = {
   location_id: string;
   port: number;
   version: string;
+  api_version?: number;
+};
+
+type StaffRuntimeContext = {
+  mode: "LOCAL";
+  tenant_id: string;
+  location_id: string;
+  local_master_instance_id: string;
 };
 
 const configuredUrl = import.meta.env.VITE_LOCAL_REALTIME_URL as string | undefined;
 const configuredRelayUrl = import.meta.env.VITE_RELAY_SYNC_URL as string | undefined;
-const configuredRelayLocationId = import.meta.env.VITE_RELAY_LOCATION_ID as string | undefined;
-const configuredConnectionMode = (import.meta.env.VITE_STAFF_CONNECTION_MODE as string | undefined)?.toLowerCase();
+let activeTenantId: string | null = null;
+let activeLocationId: string | null = null;
+let expectedLocalMasterInstanceId: string | null = null;
+let runtimeContext: StaffRuntimeContext | null | undefined;
+
+export function setActiveStaffConnectionContext(context: {
+  tenantId: string;
+  locationId: string;
+  localMasterInstanceId: string | null;
+} | null) {
+  activeTenantId = context?.tenantId ?? null;
+  activeLocationId = context?.locationId ?? null;
+  expectedLocalMasterInstanceId = context?.localMasterInstanceId ?? null;
+}
 
 export function getLocalMasterUrl() {
   if (configuredUrl) {
@@ -465,19 +485,12 @@ export function getAccountSetupRelaySyncUrl() {
 }
 
 export async function detectConnectionMode(): Promise<ConnectionMode> {
-  if (configuredConnectionMode === "local") {
-    return (await canReachExpectedLocalMaster()) ? "LOCAL" : "OFFLINE";
-  }
-
-  if (configuredConnectionMode === "relay") {
-    return getRelaySyncUrl() && configuredRelayLocationId ? "RELAY" : "OFFLINE";
-  }
-
-  if (await canReachExpectedLocalMaster()) {
+  const localRuntime = await loadRuntimeContext();
+  if ((localRuntime || configuredUrl) && await canReachExpectedLocalMaster()) {
     return "LOCAL";
   }
 
-  return getRelaySyncUrl() && configuredRelayLocationId ? "RELAY" : "OFFLINE";
+  return getRelaySyncUrl() && activeLocationId ? "RELAY" : "OFFLINE";
 }
 
 export async function canReachLocalMaster() {
@@ -490,7 +503,11 @@ export async function canReachExpectedLocalMaster() {
     return false;
   }
 
-  if (configuredRelayLocationId && identity.location_id !== configuredRelayLocationId) {
+  if (activeLocationId && identity.location_id !== activeLocationId) {
+    return false;
+  }
+
+  if (expectedLocalMasterInstanceId && identity.instance_id !== expectedLocalMasterInstanceId) {
     return false;
   }
 
@@ -515,6 +532,17 @@ async function readLocalMasterIdentity() {
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function loadRuntimeContext() {
+  if (runtimeContext !== undefined) return runtimeContext;
+  try {
+    const response = await fetch(new URL("/api/runtime-context", window.location.origin));
+    runtimeContext = response.ok ? await response.json() as StaffRuntimeContext : null;
+  } catch {
+    runtimeContext = null;
+  }
+  return runtimeContext;
 }
 
 export function loadCatalog() {
@@ -702,7 +730,7 @@ export function describeConnectionUnavailable() {
     return "LocalMaster nicht erreichbar und Relay-URL fehlt.";
   }
 
-  if (!configuredRelayLocationId) {
+  if (!activeLocationId) {
     return "LocalMaster nicht erreichbar und Relay-Location fehlt.";
   }
 
@@ -728,10 +756,10 @@ function emptySalesReport(businessDate: string): SalesReport {
 }
 
 function requireStaffRelayLocationId() {
-  if (!configuredRelayLocationId) {
+  if (!activeLocationId) {
     throw new Error("Relay-Location fehlt.");
   }
-  return configuredRelayLocationId;
+  return activeLocationId;
 }
 
 async function createRelayOrderSnapshot(request: {
@@ -1408,7 +1436,7 @@ function requireRelaySyncUrl() {
 }
 
 function requireCloudUserManagementAvailable(connectionMode: ConnectionMode) {
-  if (!getRelaySyncUrl() || !configuredRelayLocationId) {
+  if (!getRelaySyncUrl() || !activeLocationId || !activeTenantId) {
     throw new Error("Mitarbeiterverwaltung benoetigt Relay/Cloud, weil Better Auth dort final gespeichert wird.");
   }
 

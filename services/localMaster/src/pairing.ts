@@ -27,7 +27,11 @@ export function getLocalMasterIdentity(): LocalMasterIdentity {
     instance_id: getOrCreateInstanceId(),
     location_id: settings.location_id,
     port: Number(process.env.LOCAL_MASTER_PORT ?? process.env.LOCAL_REALTIME_PORT ?? 3000),
-    version: process.env.npm_package_version ?? "0.1.0"
+    version: process.env.npm_package_version ?? "0.1.0",
+    service_version: process.env.npm_package_version ?? "0.1.0",
+    api_version: 1,
+    minimum_client_api_version: 1,
+    maximum_client_api_version: 1
   };
 }
 
