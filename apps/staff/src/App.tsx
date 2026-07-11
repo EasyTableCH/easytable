@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useSession, signOut } from "@easytable/auth";
 import { Login } from "@easytable/ui/pages/login/Login";
+import { toast } from "sonner";
 
 import { AppLayout } from "./layout/AppLayout";
 import { defaultView, type AppView, type StaffModule } from "./layout/navigation";
+import { resolveTenantRelation } from "./lib/authTenant";
 import { detectConnectionMode, loadPosSettings, type LocationServiceMode } from "./lib/local-master";
 import { AccountSetupPage } from "./modules/account-setup/AccountSetupPage";
 import { KdsPage } from "./modules/kds/KdsPage";
@@ -48,7 +50,7 @@ function AuthenticatedApp() {
           }
         }
       } catch (err) {
-        console.error("Error fetching auth details", err);
+        toast.error(err instanceof Error ? err.message : "Auth-Details konnten nicht geladen werden.");
       } finally {
         if (isMounted) {
           setAuthLoading(false);
@@ -111,7 +113,7 @@ function AuthenticatedApp() {
 
   const isPlatformAdmin = authDetails?.user?.role === "platform_admin";
   const targetTenantId = import.meta.env.VITE_RELAY_TENANT_ID;
-  const tenantRelation = authDetails?.tenants?.find((t) => t.tenantId === targetTenantId);
+  const tenantRelation = resolveTenantRelation(authDetails?.tenants ?? [], targetTenantId);
 
   // If not platform admin, they must belong to this tenant
   if (!isPlatformAdmin && !tenantRelation) {

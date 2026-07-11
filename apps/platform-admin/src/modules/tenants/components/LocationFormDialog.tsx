@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { MapPin, Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@easytable/ui/components/button";
 import {
@@ -25,20 +26,17 @@ type LocationFormDialogProps = {
 export function LocationFormDialog({ location, mode, disabled = false, onSubmit }: LocationFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => createLocationFormState(location));
-  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createLocationFormState(location));
-      setError(null);
     }
   }, [location, open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setIsSaving(true);
 
     try {
@@ -51,7 +49,7 @@ export function LocationFormDialog({ location, mode, disabled = false, onSubmit 
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Location konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Location konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -112,8 +110,6 @@ export function LocationFormDialog({ location, mode, disabled = false, onSubmit 
               <option value="SUSPENDED">SUSPENDED</option>
             </select>
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving} type="submit">

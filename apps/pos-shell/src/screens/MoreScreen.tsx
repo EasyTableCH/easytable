@@ -11,6 +11,7 @@
   WalletCardsIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@easytable/ui/components/button";
 import { cn } from "@easytable/ui/lib/utils";
 
@@ -229,7 +230,6 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
   const [pairingSession, setPairingSession] = useState<PairingSession | null>(null);
   const [terminalConfig, setTerminalConfig] = useState<TerminalPairingConfig | null>(getStoredTerminalConfig());
   const [status, setStatus] = useState(getLocalMasterBlockedReason() ?? "Bereit");
-  const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
   const pairingPayload = useMemo(() => {
@@ -247,12 +247,11 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
   }, [endpoint, pairingSession]);
   async function runAction(action: () => Promise<void>) {
     setIsBusy(true);
-    setError(null);
 
     try {
       await action();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setIsBusy(false);
     }
@@ -407,11 +406,6 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
                 Koppeln
               </Button>
             </div>
-{error ? (
-              <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
-                {error}
-              </p>
-            ) : null}
           </section>
 
           <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
@@ -584,7 +578,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
   const [clearingPrintLogs, setClearingPrintLogs] = useState(false);
   const [testingDeviceId, setTestingDeviceId] = useState<string | null>(null);
   const [retryingPrintJobId, setRetryingPrintJobId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("Nicht konfiguriert");
 
   const printerDevices = useMemo(() => devices.filter((device) => device.type === "PRINTER"), [devices]);
@@ -594,7 +587,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
     if (showLoadingState) {
       setIsLoading(true);
     }
-    setError(null);
 
     try {
       const [loadedStations, loadedBindings, loadedDevices, loadedPosBinding, loadedPrintLogs, loadedPrintJobs] = await Promise.all([
@@ -629,7 +621,7 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       );
       setStatus(activeStations.length === 0 ? "Keine Stationen konfiguriert" : "Bereit");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
       setStatus("Fehler beim Laden");
     } finally {
       if (showLoadingState) {
@@ -703,7 +695,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
     };
 
     setSavingDevice(true);
-    setError(null);
 
     try {
       const saved = deviceDraft.id
@@ -718,8 +709,9 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       });
       setDeviceDraft(emptyLocalDeviceDraft);
       setStatus(saved.name + " gespeichert");
+      toast.success(saved.name + " gespeichert");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setSavingDevice(false);
     }
@@ -727,7 +719,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
 
   async function runDeviceTest(device: LocalDevice) {
     setTestingDeviceId(device.id);
-    setError(null);
 
     try {
       const result = await testLocalDevice(device.id);
@@ -737,8 +728,9 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       }
 
       setStatus(result.message || device.name + " getestet");
+      toast.success(result.message || device.name + " getestet");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setTestingDeviceId(null);
     }
@@ -746,7 +738,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
 
   async function savePosBinding() {
     setSavingPosBinding(true);
-    setError(null);
 
     try {
       const saved = await updatePosDeviceBinding(terminalId, {
@@ -757,8 +748,9 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       setPosBinding(saved);
       setPosDraft(draftFromPosBinding(saved));
       setStatus("Kassendrucker gespeichert");
+      toast.success("Kassendrucker gespeichert");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setSavingPosBinding(false);
     }
@@ -766,14 +758,14 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
 
   async function clearPrintHistory() {
     setClearingPrintLogs(true);
-    setError(null);
 
     try {
       await clearPrintLogs();
       setPrintLogs([]);
       setStatus("Print-Logs geleert");
+      toast.success("Print-Logs geleert");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setClearingPrintLogs(false);
     }
@@ -781,14 +773,14 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
 
   async function retryFailedPrintJob(job: PrintJob) {
     setRetryingPrintJobId(job.id);
-    setError(null);
 
     try {
       const retriedJob = await retryPrintJob(job.id);
       setPrintJobs((current) => upsertPrintJob(current, retriedJob));
       setStatus(job.title + " wird erneut gedruckt");
+      toast.info(job.title + " wird erneut gedruckt");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setRetryingPrintJobId(null);
     }
@@ -798,7 +790,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
     const draft = drafts[station.id] ?? draftFromBinding(bindings[station.id]);
 
     setSavingStationId(station.id);
-    setError(null);
 
     try {
       const saved = await updateStationDeviceBinding(station.id, {
@@ -809,8 +800,9 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       setBindings((current) => ({ ...current, [station.id]: saved }));
       setDrafts((current) => ({ ...current, [station.id]: draftFromBinding(saved) }));
       setStatus(station.name + " gespeichert");
+      toast.success(station.name + " gespeichert");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : String(caughtError));
+      toast.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
     } finally {
       setSavingStationId(null);
     }
@@ -830,12 +822,6 @@ function DeviceSettingsScreen({ onBack }: { onBack: () => void }) {
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-        {error ? (
-          <p className="mb-4 max-w-5xl rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
-            {error}
-          </p>
-        ) : null}
-
         {isLoading ? (
           <section className="rounded-md border border-slate-200 bg-white p-5 text-sm font-bold text-slate-500 shadow-sm">
             Daten werden geladen...

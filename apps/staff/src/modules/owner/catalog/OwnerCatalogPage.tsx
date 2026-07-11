@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { WifiOff } from "lucide-react";
-
-import { Button } from "@easytable/ui/components/button";
+import { toast } from "sonner";
 
 import {
   detectConnectionMode,
@@ -33,12 +31,10 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
   const [taxes, setTaxes] = useState<CatalogTax[]>([]);
   const [variantGroups, setVariantGroups] = useState<ProductVariantGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("OFFLINE");
 
   const refreshCatalog = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
 
     try {
       const nextMode = await detectConnectionMode();
@@ -50,20 +46,18 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
       setOutputStations(snapshot.output_stations);
       setVariantGroups(await loadOwnerProductVariantGroups());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Katalog konnte nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Katalog konnte nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   async function runAction(action: string, payload: unknown) {
-    setError(null);
-
     try {
       await runOwnerCatalogActionForConnection(connectionMode, action, payload);
       await refreshCatalog();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -86,8 +80,6 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5">
-      {error ? <ErrorBanner message={error} onRetry={refreshCatalog} /> : null}
-
       {section === "products" ? (
         <ProductsView
           categories={categories}
@@ -131,23 +123,6 @@ export function OwnerCatalogPage({ section }: OwnerCatalogPageProps) {
           taxes={taxes}
         />
       )}
-    </div>
-  );
-}
-
-function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-destructive sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <WifiOff className="mt-0.5 size-5 shrink-0" />
-        <div className="min-w-0">
-          <p className="font-medium">Katalogaktion fehlgeschlagen</p>
-          <p className="break-words text-sm opacity-80">{message}</p>
-        </div>
-      </div>
-      <Button onClick={onRetry} type="button" variant="outline">
-        Erneut laden
-      </Button>
     </div>
   );
 }

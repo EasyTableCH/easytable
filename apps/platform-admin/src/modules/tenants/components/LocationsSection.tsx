@@ -68,6 +68,9 @@ export function LocationsSection({
               {locations.map((location) => {
                 const pairingSession = pairingSessions[location.id];
                 const hasActiveSetupCode = pairingSession?.status === "ACTIVE";
+                const visibleLocalMasterValue = hasActiveSetupCode && pairingSession.setup_code
+                  ? pairingSession.setup_code
+                  : location.local_master_instance_id ?? "Kein Setup-Code";
 
                 return (
                   <TableRow className={location.id === selectedLocation?.id ? "bg-muted/50" : undefined} key={location.id} onClick={() => onSelect(location.id)}>
@@ -81,11 +84,11 @@ export function LocationsSection({
                     <TableCell>{location.address ?? "Keine Adresse"}</TableCell>
                     <TableCell>
                       <div className="grid gap-1">
-                        <Badge className="w-fit" variant={location.local_master_instance_id ? "secondary" : hasActiveSetupCode ? "default" : "outline"}>
-                          {location.local_master_instance_id ? "Gekoppelt" : hasActiveSetupCode ? "Setup-Code aktiv" : "Nicht gekoppelt"}
+                        <Badge className="w-fit" variant={hasActiveSetupCode ? "default" : location.local_master_instance_id ? "secondary" : "outline"}>
+                          {hasActiveSetupCode ? "Neuer Setup-Code aktiv" : location.local_master_instance_id ? "Gekoppelt" : "Nicht gekoppelt"}
                         </Badge>
                         <span className="font-mono text-xs text-muted-foreground">
-                          {location.local_master_instance_id ?? pairingSession?.setup_code ?? "Kein Setup-Code"}
+                          {visibleLocalMasterValue}
                         </span>
                         {hasActiveSetupCode && pairingSession.expires_at ? (
                           <span className="text-xs text-muted-foreground">bis {new Date(pairingSession.expires_at).toLocaleTimeString("de-CH")}</span>

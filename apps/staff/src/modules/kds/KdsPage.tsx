@@ -1,5 +1,6 @@
 import { CheckCircleIcon, ChefHatIcon, ClockIcon, FlameIcon, GripVerticalIcon, PlayIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
@@ -35,7 +36,6 @@ export function KdsPage() {
   const [tickets, setTickets] = useState<KdsTicket[]>([]);
   const [draggedTicketId, setDraggedTicketId] = useState<string | null>(null);
   const [activeDropStatus, setActiveDropStatus] = useState<KdsTicketStatus | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [updatingTicketId, setUpdatingTicketId] = useState<string | null>(null);
   const { connectionMode, refreshConnectionMode } = useConnectionModeMonitor();
@@ -52,7 +52,7 @@ export function KdsPage() {
         if (connectionMode === "OFFLINE") {
           setStations([]);
           setSelectedStation("");
-          setNotice("LocalMaster ist nicht erreichbar und Relay ist nicht bereit.");
+          toast.error("LocalMaster ist nicht erreichbar und Relay ist nicht bereit.");
           return;
         }
 
@@ -66,13 +66,12 @@ export function KdsPage() {
               ? current
               : kdsStations[0]?.name ?? ""
           );
-          setNotice(null);
         }
       } catch (error) {
         console.warn("Could not load output stations.", error);
 
         if (isMounted) {
-          setNotice("Stationen konnten nicht geladen werden.");
+          toast.error("Stationen konnten nicht geladen werden.");
         }
         void refreshConnectionMode();
       }
@@ -106,7 +105,7 @@ export function KdsPage() {
       setTickets(await loadKdsTicketsForConnection(connectionMode, selectedStation));
     } catch (error) {
       console.warn("Could not load KDS tickets.", error);
-      setNotice("KDS Tickets konnten nicht geladen werden.");
+      toast.error("KDS Tickets konnten nicht geladen werden.");
       void refreshConnectionMode();
     } finally {
       if (showLoadingState) {
@@ -147,18 +146,16 @@ export function KdsPage() {
     }
 
     setUpdatingTicketId(ticket.id);
-    setNotice(null);
 
     try {
       const updatedTicket = await updateKdsTicketStatusForConnection(connectionMode, ticket.id, status);
       setTickets((current) => current.map((entry) => entry.id === updatedTicket.id ? updatedTicket : entry));
 
       if (status === "DONE") {
-        setNotice(`Tisch ${ticket.table_name} ist abholbereit.`);
+        toast.success(`Tisch ${ticket.table_name} ist abholbereit.`);
       }
     } catch (error) {
-      console.error("Could not update KDS ticket.", error);
-      setNotice(error instanceof Error ? error.message : "Ticket konnte nicht verschoben werden.");
+      toast.error(error instanceof Error ? error.message : "Ticket konnte nicht verschoben werden.");
       void refreshConnectionMode();
     } finally {
       setUpdatingTicketId(null);
@@ -272,11 +269,6 @@ export function KdsPage() {
         </div>
       </div>
 
-      {notice ? (
-        <div className="fixed bottom-6 left-4 right-4 z-40 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg shadow-slate-900/10 sm:right-auto sm:max-w-sm">
-          {notice}
-        </div>
-      ) : null}
     </section>
   );
 }

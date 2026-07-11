@@ -24,6 +24,7 @@ await listen(relayServer);
 const walleeBaseUrl = "http://127.0.0.1:" + (walleeServer.address() as AddressInfo).port + "/api/v2.0";
 const relayBaseUrl = "http://127.0.0.1:" + (relayServer.address() as AddressInfo).port;
 
+process.env.NODE_ENV = "test";
 process.env.LOCAL_MASTER_DB_PATH = join(mkdtempSync(join(tmpdir(), "easytable-wallee-test-")), "local-master.sqlite3");
 process.env.LOCAL_MASTER_DISABLE_POWERSYNC = "1";
 process.env.LOCAL_MASTER_DISABLE_NATS = "1";

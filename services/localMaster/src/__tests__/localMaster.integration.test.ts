@@ -24,6 +24,7 @@ import type {
 } from "../types.js";
 import type { PosOrderSnapshot } from "../store/storeState.js";
 
+process.env.NODE_ENV = "test";
 process.env.LOCAL_MASTER_DB_PATH = join(mkdtempSync(join(tmpdir(), "easytable-localmaster-test-")), "local-master.sqlite3");
 process.env.LOCAL_MASTER_DISABLE_POWERSYNC = "1";
 process.env.LOCAL_MASTER_DISABLE_NATS = "1";
@@ -32,6 +33,9 @@ const { buildServer } = await import("../server.js");
 const { getDrizzleDatabase } = await import("../db/client.js");
 const {
   commandInbox: commandInboxTable,
+  layoutAreas,
+  layoutFloors,
+  layoutTables,
   localOutbox: localOutboxTable,
   localState,
   orderSnapshotLines: orderSnapshotLinesTable,
@@ -56,6 +60,19 @@ const app = await buildServer({ logger: false });
 
 after(async () => {
   await app.close();
+});
+
+test("fresh local SQLite starts without table-plan or catalog defaults", async () => {
+  const layoutResponse = await app.inject({ method: "GET", url: "/api/table-layout" });
+  const stationResponse = await app.inject({ method: "GET", url: "/api/catalog/output-stations" });
+  const variantResponse = await app.inject({ method: "GET", url: "/api/catalog/product-variant-groups" });
+
+  assert.equal(layoutResponse.statusCode, 200, layoutResponse.body);
+  assert.deepEqual(layoutResponse.json<TableLayout>().floors, []);
+  assert.deepEqual(stationResponse.json<{ data: unknown[] }>().data, []);
+  assert.deepEqual(variantResponse.json<{ data: unknown[] }>().data, []);
+
+  seedTestTableLayout();
 });
 
 test("local cash payments are idempotent by request_id", async () => {
@@ -643,13 +660,13 @@ test("day close preview ignores legacy payments without ledger and counts lifecy
   assert.equal(after.expected_total - before.expected_total, 1200);
 });
 
-test("table layout is seeded into local SQLite and served through legacy endpoint", async () => {
+test("explicitly configured table layout is served through legacy endpoint", async () => {
   const response = await app.inject({ method: "GET", url: "/api/table-layout" });
   const layout = response.json<TableLayout>();
 
   assert.equal(response.statusCode, 200, response.body);
   assert.equal(layout.location.id, "loc_basilica_main");
-  assert.equal(layout.floors.length >= 2, true);
+  assert.equal(layout.floors.length, 2);
   assert.equal(layout.floors.some((floor) => floor.areas.some((area) => area.tables.length > 0)), true);
 });
 
@@ -1353,6 +1370,29 @@ function basketLine(id: string, amount: number, quantity = 1): BasketLine {
     quantity,
     line_total: amount * quantity
   };
+}
+
+function seedTestTableLayout() {
+  const now = Date.now();
+  const db = getDrizzleDatabase();
+
+  db.transaction((tx) => {
+    tx.insert(layoutFloors).values([
+      { id: "floor_basilica_eg", locationId: "loc_basilica_main", name: "EG", sortOrder: 10, createdAt: now, updatedAt: now },
+      { id: "floor_basilica_og", locationId: "loc_basilica_main", name: "OG", sortOrder: 20, createdAt: now, updatedAt: now }
+    ]).run();
+    tx.insert(layoutAreas).values([
+      { id: "area_basilica_bar", floorId: "floor_basilica_eg", name: "Bar", sortOrder: 10, createdAt: now, updatedAt: now },
+      { id: "area_basilica_fumoir", floorId: "floor_basilica_eg", name: "Fumoir", sortOrder: 20, createdAt: now, updatedAt: now },
+      { id: "area_basilica_og_lounge", floorId: "floor_basilica_og", name: "Lounge", sortOrder: 10, createdAt: now, updatedAt: now }
+    ]).run();
+    tx.insert(layoutTables).values([
+      { id: "table_basilica_bar_1", areaId: "area_basilica_bar", name: "1", seats: 2, sortOrder: 10, createdAt: now, updatedAt: now },
+      { id: "table_basilica_fumoir_2", areaId: "area_basilica_fumoir", name: "2", seats: 4, sortOrder: 10, createdAt: now, updatedAt: now },
+      { id: "table_basilica_fumoir_3", areaId: "area_basilica_fumoir", name: "3", seats: 4, sortOrder: 20, createdAt: now, updatedAt: now },
+      { id: "table_basilica_og_30", areaId: "area_basilica_og_lounge", name: "30", seats: 4, sortOrder: 10, createdAt: now, updatedAt: now }
+    ]).run();
+  });
 }
 
 function pushStaffOrder(

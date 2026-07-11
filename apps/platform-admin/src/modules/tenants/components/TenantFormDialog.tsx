@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Pencil, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@easytable/ui/components/button";
 import {
@@ -24,20 +25,17 @@ type TenantFormDialogProps = {
 export function TenantFormDialog({ tenant, mode, onSubmit }: TenantFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => createTenantFormState(tenant));
-  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createTenantFormState(tenant));
-      setError(null);
     }
   }, [open, tenant]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setIsSaving(true);
 
     try {
@@ -51,7 +49,7 @@ export function TenantFormDialog({ tenant, mode, onSubmit }: TenantFormDialogPro
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Tenant konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Tenant konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -103,8 +101,6 @@ export function TenantFormDialog({ tenant, mode, onSubmit }: TenantFormDialogPro
               <option value="SUSPENDED">SUSPENDED</option>
             </select>
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving} type="submit">

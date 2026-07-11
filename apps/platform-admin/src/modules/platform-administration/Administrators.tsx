@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Archive, KeyRound, Pencil, Plus, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -15,7 +16,6 @@ import {
 import { Input } from "@easytable/ui/components/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@easytable/ui/components/table";
 
-import { ErrorBanner } from "../../components/ErrorBanner";
 import {
   archivePlatformAdministrator,
   createPlatformAdministrator,
@@ -32,32 +32,26 @@ export function Administrators() {
   const [administrators, setAdministrators] = useState<PlatformAdministrator[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   async function refreshAdministrators() {
     setIsLoading(true);
-    setError(null);
 
     try {
       setAdministrators(await loadPlatformAdministrators());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Administratoren konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Administratoren konnten nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
   }
 
   async function runAction(action: () => Promise<string | void>) {
-    setError(null);
-    setActionMessage(null);
-
     try {
       const message = await action();
       await refreshAdministrators();
-      setActionMessage(message ?? "Aktion erfolgreich ausgefuehrt.");
+      toast.success(message ?? "Aktion erfolgreich ausgefuehrt.");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -114,13 +108,6 @@ export function Administrators() {
           {getRelaySyncApiUrl()}
         </span>
       </section>
-
-      {error ? <ErrorBanner message={error} onRetry={refreshAdministrators} /> : null}
-      {actionMessage ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-700">
-          {actionMessage}
-        </div>
-      ) : null}
 
       <section className="rounded-md border bg-card text-card-foreground shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">

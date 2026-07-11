@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { Copy, Pencil, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@easytable/ui/components/button";
 import {
@@ -30,20 +31,17 @@ type CategoryFormState = {
 export function CategoryFormDialog({ category, outputStations, mode, onSubmit }: CategoryFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CategoryFormState>(() => createInitialState(category));
-  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createInitialState(category));
-      setError(null);
     }
   }, [category, open]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setIsSaving(true);
 
     try {
@@ -54,7 +52,7 @@ export function CategoryFormDialog({ category, outputStations, mode, onSubmit }:
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Kategorie konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Kategorie konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -96,8 +94,6 @@ export function CategoryFormDialog({ category, outputStations, mode, onSubmit }:
               ))}
             </select>
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving} type="submit">

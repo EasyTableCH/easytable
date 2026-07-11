@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Copy, Pencil, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@easytable/ui/components/button";
 import {
@@ -45,20 +46,17 @@ type ProductFormState = {
 export function ProductFormDialog({ categories, outputStations, taxes, product, mode, onSubmit }: ProductFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ProductFormState>(() => createInitialState(categories, taxes, product));
-  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createInitialState(categories, taxes, product));
-      setError(null);
     }
   }, [categories, open, product, taxes]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setIsSaving(true);
 
     try {
@@ -73,7 +71,7 @@ export function ProductFormDialog({ categories, outputStations, taxes, product, 
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Produkt konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Produkt konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -173,8 +171,6 @@ export function ProductFormDialog({ categories, outputStations, taxes, product, 
             <span className="text-sm font-medium">Verfuegbar</span>
             <Switch checked={form.is_available} onCheckedChange={(checked) => setForm({ ...form, is_available: checked })} />
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving || categories.length === 0 || taxes.length === 0} type="submit">

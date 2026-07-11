@@ -19,7 +19,7 @@ export function getDrizzleDatabase() {
     migrateLocalMasterSchema(sqliteClient);
 
     if (process.env.LOCAL_MASTER_DISABLE_POWERSYNC !== "1") {
-      const dbPath = resolveDatabasePath(process.env.LOCAL_MASTER_DB_PATH);
+      const dbPath = resolveDatabasePath();
       void startPowerSyncSafely(dbPath);
     }
   }
@@ -41,8 +41,9 @@ function getSqliteClient() {
     return sqlite;
   }
 
-  const dbPath = resolveDatabasePath(process.env.LOCAL_MASTER_DB_PATH);
+  const dbPath = resolveDatabasePath();
   mkdirSync(dirname(dbPath), { recursive: true });
+  console.log(`LocalMaster SQLite database: ${dbPath}`);
 
   sqlite = new Database(dbPath);
   sqlite.pragma("foreign_keys = ON");
@@ -56,22 +57,18 @@ function resolveLocalMasterPath(...segments: string[]) {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", ...segments);
 }
 
-function resolveRepositoryPath(...segments: string[]) {
-  return resolveLocalMasterPath("..", "..", ...segments);
-}
+export function resolveDatabasePath() {
+  const configuredPath = process.env.NODE_ENV === "test"
+    ? process.env.LOCAL_MASTER_DB_PATH?.trim()
+    : undefined;
 
-function resolveDatabasePath(configuredPath: string | undefined) {
   if (!configuredPath) {
-    return resolveLocalMasterPath("data", "local-master.sqlite3");
+    const programDataPath = process.env.ProgramData?.trim() || "C:\\ProgramData";
+    return resolve(programDataPath, "EasyTable", "LocalMaster", "local-master.sqlite3");
   }
 
   if (isAbsolute(configuredPath)) {
     return configuredPath;
-  }
-
-  const normalizedPath = configuredPath.replace(/\\/g, "/");
-  if (normalizedPath === "services/localMaster" || normalizedPath.startsWith("services/localMaster/")) {
-    return resolveRepositoryPath(normalizedPath);
   }
 
   return resolveLocalMasterPath(configuredPath);

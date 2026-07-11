@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Edit3, Plus, RefreshCw, Save, Trash2, WifiOff, X } from "lucide-react";
+import { Edit3, Plus, Save, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -47,7 +48,6 @@ export function OwnerLocationsPage() {
   const [activeFloorId, setActiveFloorId] = useState("");
   const [activeAreaId, setActiveAreaId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("OFFLINE");
 
@@ -64,9 +64,6 @@ export function OwnerLocationsPage() {
     if (showLoadingState) {
       setIsLoading(true);
     }
-
-    setError(null);
-
     try {
       const nextMode = await detectConnectionMode();
       setConnectionMode(nextMode);
@@ -94,7 +91,7 @@ export function OwnerLocationsPage() {
       setActiveFloorId(nextFloorId);
       setActiveAreaId(nextAreaId);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Standorte konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Standorte konnten nicht geladen werden.");
       setLayout(null);
     } finally {
       if (showLoadingState) {
@@ -120,8 +117,6 @@ export function OwnerLocationsPage() {
   }, [connectionMode, refresh]);
 
   async function runAction(action: () => Promise<void>) {
-    setError(null);
-
     try {
       if (connectionMode !== "LOCAL") {
         throw new Error("Standort- und Tischplan-Bearbeitung via Relay ist noch nicht verfuegbar.");
@@ -131,7 +126,7 @@ export function OwnerLocationsPage() {
       setEditingId(null);
       await refresh(false);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     }
   }
 
@@ -147,9 +142,8 @@ export function OwnerLocationsPage() {
       setLayout(nextLayout);
       setActiveFloorId(nextLayout.floors[0]?.id ?? "");
       setActiveAreaId(nextLayout.floors[0]?.areas[0]?.id ?? "");
-      setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Tischplan konnte nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Tischplan konnte nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
@@ -179,8 +173,6 @@ export function OwnerLocationsPage() {
           </span>
         </div>
       </section>
-
-      {error ? <ErrorBanner message={error} onRetry={() => void refresh()} /> : null}
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1fr_1.2fr]">
         <LayoutPanel
@@ -491,24 +483,6 @@ function EditableRow(props: {
       </Button>
       <Button disabled={props.hasOpenOrder} size="icon" type="button" variant="ghost" onClick={props.onDelete}>
         <Trash2 className="size-4" />
-      </Button>
-    </div>
-  );
-}
-
-function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-destructive sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <WifiOff className="mt-0.5 size-5 shrink-0" />
-        <div className="min-w-0">
-          <p className="font-medium">Standortaktion fehlgeschlagen</p>
-          <p className="break-words text-sm opacity-80">{message}</p>
-        </div>
-      </div>
-      <Button onClick={onRetry} type="button" variant="outline">
-        <RefreshCw className="mr-2 size-4" />
-        Erneut laden
       </Button>
     </div>
   );
