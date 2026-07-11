@@ -22,6 +22,17 @@
     - Do we sync db of tenants on both sides? A tenant has localMaster with local SQLiteDB and his data should be aswell in postgres in cloud with relaySyncAPI, so it acts like a backup or security copy of the data
     - This is fundamental for the bigger picture and we need to answer these questions with yes, no partial yes
 
+- [ ] Complete deployment, discovery and lifecycle architecture
+    - [x] Return Better Auth tenant/location context and remove Staff build-time tenant/location selection
+    - [x] Validate LocalMaster tenant/location/instance before choosing local mode
+    - [x] Serve the same Staff build from LocalMaster under `/staff`
+    - [x] Add paired-device plus PIN offline Staff sessions
+    - [x] Add API compatibility and update-safety contracts
+    - [x] Add signed release-manifest and Tauri updater foundations
+    - [ ] Produce and sign the Windows Master Station installer with bundled runtime and WinSW
+    - [ ] Configure production update URLs/public keys and exercise rollback in a release environment
+    - [ ] Replace remaining technician fields with the guided owner setup wizard
+
 
 - [ ] Define and implement the deployment, discovery and lifecycle architecture
     - Remove tenant and location selection from build-time `.env` configuration. After Better Auth login, RelaySyncApi must return the user's tenant memberships, locations, roles and connection state.

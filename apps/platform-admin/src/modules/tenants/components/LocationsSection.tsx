@@ -85,11 +85,16 @@ export function LocationsSection({
                     <TableCell>
                       <div className="grid gap-1">
                         <Badge className="w-fit" variant={hasActiveSetupCode ? "default" : location.local_master_instance_id ? "secondary" : "outline"}>
-                          {hasActiveSetupCode ? "Neuer Setup-Code aktiv" : location.local_master_instance_id ? "Gekoppelt" : "Nicht gekoppelt"}
+                          {hasActiveSetupCode ? "Setup-Code aktiv" : location.local_master_instance_id ? "Gekoppelt" : "Nicht gekoppelt"}
                         </Badge>
                         <span className="font-mono text-xs text-muted-foreground">
-                          {visibleLocalMasterValue}
+                          {hasActiveSetupCode && pairingSession.setup_code
+                            ? pairingSession.setup_code
+                            : location.local_master_instance_id ?? "Kein Setup-Code"}
                         </span>
+                        {hasActiveSetupCode && location.local_master_instance_id ? (
+                          <span className="font-mono text-[0.65rem] text-muted-foreground">Instanz: {location.local_master_instance_id}</span>
+                        ) : null}
                         {hasActiveSetupCode && pairingSession.expires_at ? (
                           <span className="text-xs text-muted-foreground">bis {new Date(pairingSession.expires_at).toLocaleTimeString("de-CH")}</span>
                         ) : null}

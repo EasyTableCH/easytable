@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { pbkdf2Sync } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -1117,6 +1118,31 @@ test("unpaired PowerSync does not block local REST reads", async () => {
 
   assert.equal(response.statusCode, 200, response.body);
   assert.ok(Array.isArray(response.json<{ data: unknown[] }>().data));
+});
+
+test("paired Staff device can create a local PIN session", async () => {
+  const salt = "local-auth-test-salt";
+  const pinHash = "pbkdf2_sha256$120000$" + salt + "$" + pbkdf2Sync("246810", salt, 120_000, 32, "sha256").toString("hex");
+  getDrizzleDatabase().insert(localState).values({
+    key: "localMaster.bootstrap",
+    valueJson: JSON.stringify({ users: [{ user_id: "local_owner", email: "owner@example.test", display_name: "Local Owner", role: "OWNER", status: "ACTIVE", pin_hash: pinHash, is_active: true }] }),
+    updatedAt: Date.now(),
+  }).onConflictDoUpdate({ target: localState.key, set: { valueJson: JSON.stringify({ users: [{ user_id: "local_owner", email: "owner@example.test", display_name: "Local Owner", role: "OWNER", status: "ACTIVE", pin_hash: pinHash, is_active: true }] }), updatedAt: Date.now() } }).run();
+
+  const pairing = await postJson<{ code: string }>("/api/local-master/pairing-sessions", {}, 201);
+  const device = await postJson<{ terminalId: string; terminalSecret: string }>("/api/local-auth/devices/pair", {
+    code: pairing.code, device_name: "Staff Tablet", local_master_url: "http://localhost:3000",
+  }, 201);
+  const usersResponse = await app.inject({ method: "GET", url: "/api/local-auth/users", headers: { "x-easytable-device-id": device.terminalId, "x-easytable-device-secret": device.terminalSecret } });
+  assert.equal(usersResponse.statusCode, 200, usersResponse.body);
+  assert.equal(usersResponse.json<Array<{ user_id: string }>>()[0]?.user_id, "local_owner");
+
+  const session = await postJson<{ token: string; role: string }>("/api/local-auth/pin", {
+    device_id: device.terminalId, device_secret: device.terminalSecret, user_id: "local_owner", pin: "246810",
+  }, 200);
+  assert.equal(session.role, "OWNER");
+  const sessionResponse = await app.inject({ method: "GET", url: "/api/local-auth/session", headers: { authorization: "Bearer " + session.token } });
+  assert.equal(sessionResponse.statusCode, 200, sessionResponse.body);
 });
 
 async function postJson<T>(url: string, request: unknown, expectedStatus: number): Promise<T> {
