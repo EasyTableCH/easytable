@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Archive, Hash, KeyRound, Pencil, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -40,27 +41,25 @@ export function EmployeesView({
   onResetPin,
   onUpdate,
 }: EmployeesViewProps) {
-  const [message, setMessage] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   async function runReset(user: TenantLocationUser, kind: "password" | "pin") {
     setBusyUserId(user.user_id + ":" + kind);
-    setMessage(null);
 
     try {
       if (kind === "password") {
         await onResetPassword(user.user_id);
-        setMessage("Setup-Link fuer " + user.display_name + " wurde per E-Mail verschickt.");
+        toast.success("Setup-Link fuer " + user.display_name + " wurde per E-Mail verschickt.");
       } else {
         const generatedPin = await onResetPin(user.user_id);
-        setMessage(
+        toast.success(
           generatedPin
             ? "Neue PIN fuer " + user.display_name + ": " + generatedPin
             : "PIN fuer " + user.display_name + " wurde aktualisiert."
         );
       }
     } catch (resetError) {
-      setMessage(resetError instanceof Error ? resetError.message : "Reset fehlgeschlagen.");
+      toast.error(resetError instanceof Error ? resetError.message : "Reset fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -72,18 +71,17 @@ export function EmployeesView({
     }
 
     setBusyUserId(user.user_id + ":" + kind);
-    setMessage(null);
 
     try {
       if (kind === "archive") {
         await onArchive(user.user_id);
-        setMessage(user.display_name + " wurde archiviert.");
+        toast.success(user.display_name + " wurde archiviert.");
       } else {
         await onDelete(user.user_id);
-        setMessage(user.display_name + " wurde geloescht.");
+        toast.success(user.display_name + " wurde geloescht.");
       }
     } catch (actionError) {
-      setMessage(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -106,7 +104,6 @@ export function EmployeesView({
       </div>
 
       <div className="p-2 sm:p-3">
-        {message ? <p className="mb-3 rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p> : null}
         <div className="overflow-hidden rounded-md border">
           <Table>
             <TableHeader>
@@ -208,20 +205,17 @@ function EmployeeDialog({
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => createEmployeeForm(user));
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createEmployeeForm(user));
-      setError(null);
     }
   }, [open, user]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
-    setError(null);
 
     try {
       await onSubmit({
@@ -235,7 +229,7 @@ function EmployeeDialog({
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Mitarbeiter konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Mitarbeiter konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -296,8 +290,6 @@ function EmployeeDialog({
             <input checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} type="checkbox" />
             Fuer diese Location aktiv
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving} type="submit">{isSaving ? "Speichert..." : "Speichern"}</Button>

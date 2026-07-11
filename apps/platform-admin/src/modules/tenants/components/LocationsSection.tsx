@@ -68,6 +68,9 @@ export function LocationsSection({
               {locations.map((location) => {
                 const pairingSession = pairingSessions[location.id];
                 const hasActiveSetupCode = pairingSession?.status === "ACTIVE";
+                const visibleLocalMasterValue = hasActiveSetupCode && pairingSession.setup_code
+                  ? pairingSession.setup_code
+                  : location.local_master_instance_id ?? "Kein Setup-Code";
 
                 return (
                   <TableRow className={location.id === selectedLocation?.id ? "bg-muted/50" : undefined} key={location.id} onClick={() => onSelect(location.id)}>

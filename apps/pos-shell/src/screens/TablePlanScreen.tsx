@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
@@ -25,6 +26,7 @@ type TablePlanScreenProps = {
 };
 
 const tablePlanReloadEvents = new Set(["ORDER_CREATED", "TABLE_UPDATED"]);
+const staffManagementUrl = (import.meta.env.VITE_STAFF_URL as string | undefined)?.trim() || "http://localhost:1422";
 
 export function TablePlanScreen({
   onNavigate,
@@ -98,6 +100,9 @@ export function TablePlanScreen({
     () => activeFloor?.areas.find((area) => area.id === activeAreaId),
     [activeAreaId, activeFloor],
   );
+  const hasAnyTables = Boolean(layout?.floors.some((floor) =>
+    floor.areas.some((area) => area.tables.length > 0)
+  ));
 
   function handleFloorSelect(floor: TableLayoutFloor) {
     setActiveFloorId(floor.id);
@@ -206,12 +211,20 @@ export function TablePlanScreen({
             })}
           </div>
         ) : (
-          <div className="flex min-h-[50svh] items-center justify-center rounded-md border border-dashed border-slate-300 bg-white/60 px-6 text-center">
+          <div className="flex min-h-[50svh] flex-col items-center justify-center gap-4 rounded-md border border-dashed border-slate-300 bg-white/60 px-6 text-center">
             <p className="max-w-sm text-sm font-black uppercase text-slate-400">
               {isLoadingLayout
                 ? "Tischplan wird geladen"
                 : layoutNotice ?? "Keine Tische im Tischplan"}
             </p>
+            {!isLoadingLayout && !layoutNotice && !hasAnyTables ? (
+              <Button asChild variant="outline">
+                <a href={staffManagementUrl} rel="noreferrer" target="_blank">
+                  Tischplan in Staff verwalten
+                  <ExternalLink className="size-4" />
+                </a>
+              </Button>
+            ) : null}
           </div>
         )}
       </section>

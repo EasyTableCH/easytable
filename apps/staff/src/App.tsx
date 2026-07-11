@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSession, signOut } from "@easytable/auth";
 import { Login } from "@easytable/ui/pages/login/Login";
+import { toast } from "sonner";
 
 import { AppLayout } from "./layout/AppLayout";
 import { defaultView, type AppView, type StaffModule } from "./layout/navigation";
+import { resolveTenantRelation } from "./lib/authTenant";
+import { detectConnectionMode, loadPosSettings, type LocationServiceMode } from "./lib/local-master";
 import {
   listSelectableStaffContexts,
   resolveStoredStaffContext,
@@ -98,7 +101,7 @@ function AuthenticatedApp() {
           }
         }
       } catch (err) {
-        console.error("Error fetching auth details", err);
+        toast.error(err instanceof Error ? err.message : "Auth-Details konnten nicht geladen werden.");
       } finally {
         if (isMounted) {
           setAuthLoading(false);

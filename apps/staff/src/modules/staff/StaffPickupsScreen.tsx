@@ -1,5 +1,6 @@
 import { BellIcon, CheckIcon, ClockIcon, PackageCheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
@@ -17,7 +18,6 @@ const pickupReloadEvents = new Set(["STATION_PICKUP_READY", "STATION_PICKUP_ACKN
 export function StaffPickupsScreen() {
   const [pickups, setPickups] = useState<StationPickup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmittingPickupId, setIsSubmittingPickupId] = useState<string | null>(null);
   const { connectionMode, refreshConnectionMode } = useConnectionModeMonitor();
 
@@ -29,15 +29,14 @@ export function StaffPickupsScreen() {
     try {
       if (connectionMode === "OFFLINE") {
         setPickups([]);
-        setNotice("Keine Verbindung zu LocalMaster oder Relay.");
+        toast.error("Keine Verbindung zu LocalMaster oder Relay.");
         return;
       }
 
       setPickups(await loadStationPickupsForConnection(connectionMode, "READY"));
-      setNotice(null);
     } catch (error) {
       console.warn("Could not load station pickups.", error);
-      setNotice("Abholungen konnten nicht geladen werden.");
+      toast.error("Abholungen konnten nicht geladen werden.");
       void refreshConnectionMode();
     } finally {
       if (showLoadingState) {
@@ -61,7 +60,7 @@ export function StaffPickupsScreen() {
       }
 
       if (event.type === "STATION_PICKUP_READY") {
-        setNotice("Neue Abholung bereit.");
+        toast.info("Neue Abholung bereit.");
       }
 
       void loadPickups(false);
@@ -79,15 +78,13 @@ export function StaffPickupsScreen() {
     }
 
     setIsSubmittingPickupId(pickup.id);
-    setNotice(null);
 
     try {
       await acknowledgeStationPickupForConnection(connectionMode, pickup.id);
       setPickups((current) => current.filter((entry) => entry.id !== pickup.id));
-      setNotice(`${pickup.station} · Tisch ${pickup.table_name} abgeholt.`);
+      toast.success(`${pickup.station} · Tisch ${pickup.table_name} abgeholt.`);
     } catch (error) {
-      console.error("Could not acknowledge station pickup.", error);
-      setNotice(error instanceof Error ? error.message : "Abholung konnte nicht bestätigt werden.");
+      toast.error(error instanceof Error ? error.message : "Abholung konnte nicht bestätigt werden.");
       void refreshConnectionMode();
     } finally {
       setIsSubmittingPickupId(null);
@@ -178,11 +175,6 @@ export function StaffPickupsScreen() {
         )}
       </div>
 
-      {notice ? (
-        <div className="fixed bottom-6 left-4 right-4 z-40 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg shadow-slate-900/10 sm:right-auto sm:max-w-sm">
-          {notice}
-        </div>
-      ) : null}
     </section>
   );
 }

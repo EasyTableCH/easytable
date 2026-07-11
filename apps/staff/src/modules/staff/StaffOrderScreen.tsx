@@ -9,6 +9,7 @@ import {
   WifiOffIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Drawer,
   DrawerContent,
@@ -68,7 +69,6 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   const [selectedVariantItemsByGroupId, setSelectedVariantItemsByGroupId] = useState<Record<string, ProductVariantGroupItem>>({});
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [basketOpen, setBasketOpen] = useState(false);
-  const [orderNotice, setOrderNotice] = useState<string | null>(null);
   const { connectionMode, refreshConnectionMode } = useConnectionModeMonitor();
   const hasDraftChangesRef = useRef(false);
 
@@ -131,13 +131,11 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
     if (clearBeforeLoad) {
       setBasketLines([]);
       setDraftChanges(false);
-      setOrderNotice(null);
     }
 
     try {
       if (connectionMode === "OFFLINE") {
         setBasketLines([]);
-        setOrderNotice(null);
         return;
       }
 
@@ -147,7 +145,7 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
     } catch (error) {
       console.warn("Could not load open table basket.", error);
       setBasketLines([]);
-      setOrderNotice("Offener Tischauftrag konnte nicht geladen werden.");
+      toast.error("Offener Tischauftrag konnte nicht geladen werden.");
     }
   }, [connectionMode, tableContext.table_id]);
 
@@ -311,7 +309,6 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
         },
       ];
     });
-    setOrderNotice(null);
   }
 
   function decreaseBasketLine(lineId: string) {
@@ -348,7 +345,6 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
     }
 
     setIsCreatingOrder(true);
-    setOrderNotice(null);
 
     try {
       const order = await createOrderSnapshotForConnection(connectionMode, {
@@ -359,14 +355,13 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
       setDraftChanges(false);
       await loadOpenBasket(true);
       setBasketOpen(false);
-      setOrderNotice(
+      toast.success(
         connectionMode === "RELAY"
           ? `Auftrag ${order.order_number} wurde via Relay angenommen.`
           : `Auftrag ${order.order_number} wurde gespeichert.`,
       );
     } catch (error) {
-      console.error("Could not create order snapshot.", error);
-      setOrderNotice(error instanceof Error ? error.message : "Auftrag konnte nicht gespeichert werden.");
+      toast.error(error instanceof Error ? error.message : "Auftrag konnte nicht gespeichert werden.");
       void refreshConnectionMode();
     } finally {
       setIsCreatingOrder(false);
@@ -542,11 +537,6 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
         onSelectItem={handleVariantItemSelect}
       />
 
-      {orderNotice ? (
-        <div className="fixed bottom-24 left-4 right-4 z-40 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg shadow-slate-900/10 sm:right-auto sm:max-w-sm md:bottom-6">
-          {orderNotice}
-        </div>
-      ) : null}
     </section>
   );
 }

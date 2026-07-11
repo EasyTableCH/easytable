@@ -5,6 +5,7 @@
   ListIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import type { PosScreen } from "../App";
 import {
@@ -101,7 +102,6 @@ export function CashRegisterScreen({
   const [isCompletingPayment, setIsCompletingPayment] = useState(false);
   const [pendingPaymentAttemptId, setPendingPaymentAttemptId] = useState<string | null>(null);
   const [isPaymentScreenOpen, setIsPaymentScreenOpen] = useState(false);
-  const [orderNotice, setOrderNotice] = useState<string | null>(null);
   const [settingsFile, setSettingsFile] = useState<PosSettingsFile | null>(null);
 
   const loadProducts = useCallback(async () => {
@@ -145,7 +145,7 @@ export function CashRegisterScreen({
     const attemptId: string = storedAttemptId;
     let cancelled = false;
     setPendingPaymentAttemptId(attemptId);
-    setOrderNotice("Offene Terminalzahlung wird wieder aufgenommen.");
+    toast.info("Offene Terminalzahlung wird wieder aufgenommen.");
 
     async function resumePayment() {
       try {
@@ -157,17 +157,22 @@ export function CashRegisterScreen({
           setPendingPaymentAttemptId(null);
           setBasketLines([]);
           setIsPaymentScreenOpen(false);
-          setOrderNotice("Terminalzahlung wurde bestätigt.");
+          toast.success("Terminalzahlung wurde bestätigt.");
           onOrderCreated();
-        } else if (["declined", "cancelled", "failed"].includes(attempt.lifecycle_state)) {
+        } else if (attempt.lifecycle_state === "cancelled") {
           clearPendingWalleeAttempt();
           setPendingPaymentAttemptId(null);
-          setOrderNotice(attempt.failure_reason ?? "Terminalzahlung wurde nicht abgeschlossen.");
+          setIsPaymentScreenOpen(false);
+          toast.info("Terminalzahlung wurde abgebrochen.");
+        } else if (["declined", "failed"].includes(attempt.lifecycle_state)) {
+          clearPendingWalleeAttempt();
+          setPendingPaymentAttemptId(null);
+          toast.error(attempt.failure_reason ?? "Terminalzahlung wurde nicht abgeschlossen.");
         } else {
-          setOrderNotice("Terminalzahlung wird weiterhin geprüft. Bitte keine zweite Zahlung starten.");
+          toast.info("Terminalzahlung wird weiterhin geprüft. Bitte keine zweite Zahlung starten.");
         }
       } catch {
-        if (!cancelled) setOrderNotice("Offene Terminalzahlung wird durch LocalMaster weiter geprüft.");
+        if (!cancelled) toast.info("Offene Terminalzahlung wird durch LocalMaster weiter geprüft.");
       }
     }
 
@@ -194,7 +199,6 @@ export function CashRegisterScreen({
 
       setBasketLines([]);
       setIsPaymentScreenOpen(false);
-      setOrderNotice(null);
 
       try {
         const openBasket = await loadOpenTableOrderBasket(tableContext.table_id);
@@ -207,7 +211,7 @@ export function CashRegisterScreen({
 
         if (isMounted) {
           setBasketLines([]);
-          setOrderNotice("Offener Tischauftrag konnte nicht geladen werden.");
+          toast.error("Offener Tischauftrag konnte nicht geladen werden.");
         }
       }
     }
@@ -392,7 +396,6 @@ export function CashRegisterScreen({
         },
       ];
     });
-    setOrderNotice(null);
   }
 
   function decreaseBasketLine(lineId: string) {
@@ -427,12 +430,11 @@ export function CashRegisterScreen({
     }
 
     if (!tableContext) {
-      setOrderNotice("Bitte zuerst einen Tisch auswahlen.");
+      toast.error("Bitte zuerst einen Tisch auswahlen.");
       return;
     }
 
     setIsCreatingOrder(true);
-    setOrderNotice(null);
 
     try {
       const order = await createOrderSnapshot({
@@ -442,10 +444,10 @@ export function CashRegisterScreen({
       });
 
       setBasketLines([]);
-      setOrderNotice(`Auftrag ${order.order_number} wurde gespeichert.`);
+      toast.success(`Auftrag ${order.order_number} wurde gespeichert.`);
       onOrderCreated();
     } catch (error) {
-      setOrderNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Auftrag konnte nicht gespeichert werden.",
@@ -461,18 +463,17 @@ export function CashRegisterScreen({
     }
 
     if (!tableContext && !isCounterService) {
-      setOrderNotice("Bitte zuerst einen Tisch auswahlen.");
+      toast.error("Bitte zuerst einen Tisch auswahlen.");
       return;
     }
 
-    setOrderNotice(null);
     setIsPaymentScreenOpen(true);
   }
 
   async function handleCompletePayment(paymentRequest: PaymentRequest) {
     if (basketLines.length === 0 || isCompletingPayment || pendingPaymentAttemptId) {
       if (pendingPaymentAttemptId) {
-        setOrderNotice("Eine Terminalzahlung wird noch geprüft. Bitte keine zweite Zahlung starten.");
+        toast.info("Eine Terminalzahlung wird noch geprüft. Bitte keine zweite Zahlung starten.");
       }
       return;
     }
@@ -482,7 +483,6 @@ export function CashRegisterScreen({
     }
 
     setIsCompletingPayment(true);
-    setOrderNotice(null);
 
     try {
       const requestId = createClientRequestId("payment");
@@ -507,7 +507,7 @@ export function CashRegisterScreen({
         if (payment.reconciliation_required && payment.payment_attempt_id) {
           setPendingPaymentAttemptId(payment.payment_attempt_id);
           window.localStorage.setItem(pendingWalleeAttemptStorageKey, payment.payment_attempt_id);
-          setOrderNotice("Terminalzahlung wird geprüft. Bitte keine zweite Zahlung starten.");
+          toast.info("Terminalzahlung wird geprüft. Bitte keine zweite Zahlung starten.");
           try {
             const reconciled = await reconcilePaymentAttempt(payment.payment_attempt_id);
             if (reconciled.lifecycle_state === "completed") {
@@ -515,7 +515,7 @@ export function CashRegisterScreen({
               setPendingPaymentAttemptId(null);
               clearPendingWalleeAttempt();
               setIsPaymentScreenOpen(false);
-              setOrderNotice("Terminalzahlung wurde bestätigt.");
+              toast.success("Terminalzahlung wurde bestätigt.");
               onOrderCreated();
             }
           } catch {
@@ -523,18 +523,25 @@ export function CashRegisterScreen({
           }
           return;
         }
+        if (payment.lifecycle_state === "cancelled") {
+          clearPendingWalleeAttempt();
+          setPendingPaymentAttemptId(null);
+          setIsPaymentScreenOpen(false);
+          toast.info("Terminalzahlung wurde abgebrochen.");
+          return;
+        }
         throw new Error(payment.failure_reason ?? "Zahlung wurde nicht abgeschlossen.");
       }
 
       setBasketLines([]);
       setIsPaymentScreenOpen(false);
-      setOrderNotice(
+      toast.success(
         `Auftrag ${payment.order_number} wurde bezahlt (${formatChf(payment.amount)}).`,
       );
       onOrderCreated();
     } catch (error) {
       setIsPaymentScreenOpen(false);
-      setOrderNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Zahlung konnte nicht abgeschlossen werden.",
@@ -730,12 +737,6 @@ export function CashRegisterScreen({
           onStartPayment={handleStartPayment}
         />
       </section>
-
-      {orderNotice ? (
-        <div className="fixed bottom-20 left-4 max-w-sm rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg shadow-slate-900/10">
-          {orderNotice}
-        </div>
-      ) : null}
 
       <PosBottomNav activeScreen="cash" onNavigate={onNavigate} />
 

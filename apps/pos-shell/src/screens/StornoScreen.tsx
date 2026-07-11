@@ -1,5 +1,6 @@
 import { ArrowLeftIcon, RefreshCwIcon, Undo2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@easytable/ui/components/button";
 import { cn } from "@easytable/ui/lib/utils";
@@ -32,8 +33,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
   const [reason, setReason] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const selectedTotal = useMemo(() => {
     if (!selectedSnapshot) return 0;
@@ -42,7 +41,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
 
   async function refresh() {
     setIsLoading(true);
-    setError(null);
 
     try {
       const loaded = await loadReportingOrderSnapshots({
@@ -57,22 +55,20 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
         setSelectedSnapshot(updated);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Stornos konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Stornos konnten nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
   }
 
   async function selectSnapshot(snapshot: OrderSnapshotListItem) {
-    setError(null);
-    setMessage(null);
     setSelectedQuantities({});
     setMode(snapshot.remaining_total > 0 ? "FULL" : "PARTIAL");
 
     try {
       setSelectedSnapshot(await loadOrderSnapshot(snapshot.order_id));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Order-Beleg konnte nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Order-Beleg konnte nicht geladen werden.");
     }
   }
 
@@ -80,8 +76,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
     if (!selectedSnapshot) return;
 
     setIsSubmitting(true);
-    setError(null);
-    setMessage(null);
 
     try {
       const terminalId = getStoredTerminalConfig()?.terminalId ?? selectedSnapshot.terminal_id;
@@ -101,13 +95,13 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
         });
 
       const result = await createOrderStorno(selectedSnapshot.order_id, request);
-      setMessage("Storno gebucht: " + formatMoney(result.refunded_amount) + ".");
+      toast.success("Storno gebucht: " + formatMoney(result.refunded_amount) + ".");
       setReason("");
       setSelectedQuantities({});
       setSelectedSnapshot(await loadOrderSnapshot(selectedSnapshot.order_id));
       await refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Storno fehlgeschlagen.");
+      toast.error(submitError instanceof Error ? submitError.message : "Storno fehlgeschlagen.");
     } finally {
       setIsSubmitting(false);
     }
@@ -207,9 +201,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
         </aside>
 
         <section className="min-h-0 overflow-y-auto rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-          {error ? <StatusBox tone="error" message={error} /> : null}
-          {message ? <StatusBox tone="success" message={message} /> : null}
-
           {!selectedSnapshot ? (
             <div className="grid min-h-[24rem] place-items-center rounded-md bg-slate-50 p-6 text-center">
               <div>
@@ -300,17 +291,6 @@ export function StornoScreen({ onBack }: StornoScreenProps) {
         </section>
       </section>
     </main>
-  );
-}
-
-function StatusBox({ message, tone }: { message: string; tone: "error" | "success" }) {
-  return (
-    <p className={cn(
-      "mb-4 rounded-md border px-3 py-2 text-sm font-bold",
-      tone === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
-    )}>
-      {message}
-    </p>
   );
 }
 

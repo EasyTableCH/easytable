@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
-import { ErrorBanner } from "../../components/ErrorBanner";
 import {
   createLocation,
   createLocationUser,
@@ -61,7 +61,6 @@ export function TenantsPage() {
   const [isLoadingStations, setIsLoadingStations] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isLoadingWallee, setIsLoadingWallee] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const filteredTenants = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -82,27 +81,24 @@ export function TenantsPage() {
 
   async function refreshTenants() {
     setIsLoading(true);
-    setError(null);
 
     try {
       const nextTenants = await loadTenants();
       setTenants(nextTenants);
       setSelectedTenantId((current) => current ?? nextTenants[0]?.id ?? null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Tenants konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Tenants konnten nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
   }
 
   async function runTenantAction(action: () => Promise<void>) {
-    setError(null);
-
     try {
       await action();
       await refreshTenants();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -113,7 +109,6 @@ export function TenantsPage() {
     }
 
     setIsLoadingLocations(true);
-    setError(null);
 
     try {
       const nextLocations = await loadLocations(tenantId);
@@ -123,7 +118,7 @@ export function TenantsPage() {
         current && nextLocations.some((location) => location.id === current) ? current : nextLocations[0]?.id ?? null,
       );
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Locations konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Locations konnten nicht geladen werden.");
     } finally {
       setIsLoadingLocations(false);
     }
@@ -134,13 +129,11 @@ export function TenantsPage() {
       return;
     }
 
-    setError(null);
-
     try {
       await action();
       await refreshLocations(selectedTenant.id);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Location-Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Location-Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -151,12 +144,11 @@ export function TenantsPage() {
     }
 
     setIsLoadingStations(true);
-    setError(null);
 
     try {
       setOutputStations(await loadOutputStations(tenantId, locationId));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Stationen konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Stationen konnten nicht geladen werden.");
     } finally {
       setIsLoadingStations(false);
     }
@@ -168,12 +160,11 @@ export function TenantsPage() {
     }
 
     setIsLoadingUsers(true);
-    setError(null);
 
     try {
       setLocationUsers(await loadLocationUsers(tenantId, locationId));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "User konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "User konnten nicht geladen werden.");
     } finally {
       setIsLoadingUsers(false);
     }
@@ -185,14 +176,13 @@ export function TenantsPage() {
     }
 
     setIsLoadingWallee(true);
-    setError(null);
 
     try {
       const profile = await loadWalleePaymentProfile(tenantId, locationId);
       setWalleeProfile(profile);
       setWalleeTerminals(profile ? await loadWalleePaymentTerminals(tenantId, locationId) : []);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Wallee Payments konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Wallee Payments konnten nicht geladen werden.");
     } finally {
       setIsLoadingWallee(false);
     }
@@ -203,13 +193,11 @@ export function TenantsPage() {
       return;
     }
 
-    setError(null);
-
     try {
       await action();
       await refreshOutputStations(selectedTenant.id, selectedLocation.id);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Stations-Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Stations-Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -219,14 +207,12 @@ export function TenantsPage() {
       throw new Error("Erst Tenant und Location auswaehlen.");
     }
 
-    setError(null);
-
     try {
       const result = await action();
       await refreshLocationUsers(selectedTenant.id, selectedLocation.id);
       return result;
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "User-Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "User-Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -236,13 +222,11 @@ export function TenantsPage() {
       return;
     }
 
-    setError(null);
-
     try {
       await action();
       await refreshWalleePayments(selectedTenant.id, selectedLocation.id);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Wallee-Aktion fehlgeschlagen.");
+      toast.error(actionError instanceof Error ? actionError.message : "Wallee-Aktion fehlgeschlagen.");
       throw actionError;
     }
   }
@@ -256,7 +240,7 @@ export function TenantsPage() {
       const session = await loadCurrentLocalMasterPairingSession(tenantId, locationId);
       setPairingSessions((current) => cachePairingSessions({ ...current, [locationId]: mergePairingSession(current[locationId], session) }));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Pairing-Status konnte nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Pairing-Status konnte nicht geladen werden.");
     }
   }
 
@@ -265,13 +249,12 @@ export function TenantsPage() {
       return;
     }
 
-    setError(null);
-
     try {
       const session = await createLocalMasterPairingSession(selectedTenant.id, locationId);
       setPairingSessions((current) => cachePairingSessions({ ...current, [locationId]: session }));
+      toast.success(session.setup_code ? `Setup-Code ${session.setup_code} wurde erzeugt.` : "Setup-Code wurde erzeugt.");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Setup-Code konnte nicht erzeugt werden.");
+      toast.error(actionError instanceof Error ? actionError.message : "Setup-Code konnte nicht erzeugt werden.");
     }
   }
 
@@ -314,8 +297,6 @@ export function TenantsPage() {
           {getRelaySyncApiUrl()}
         </span>
       </section>
-
-      {error ? <ErrorBanner message={error} onRetry={refreshTenants} /> : null}
 
       <TenantsSection
         isLoading={isLoading}

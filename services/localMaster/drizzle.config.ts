@@ -6,6 +6,8 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.LOCAL_MASTER_DB_PATH ?? resolve(process.cwd(), "data", "local-master.sqlite3")
+    url: process.env.NODE_ENV === "test" && process.env.LOCAL_MASTER_DB_PATH
+      ? process.env.LOCAL_MASTER_DB_PATH
+      : resolve(process.env.ProgramData?.trim() || "C:\\ProgramData", "EasyTable", "LocalMaster", "local-master.sqlite3")
   }
 });

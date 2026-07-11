@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { toast } from "sonner";
 
 import {
   completeAccountSetup,
@@ -94,7 +95,7 @@ export function AccountSetupPage() {
       });
       setState({ status: "done", email: state.context.email });
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Der Zugang konnte nicht eingerichtet werden.");
+      toast.error(error instanceof Error ? error.message : "Der Zugang konnte nicht eingerichtet werden.");
     } finally {
       setSubmitting(false);
     }

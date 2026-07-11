@@ -20,7 +20,6 @@ import type {
   TableLayoutFloor,
   TableLayoutTable
 } from "../types.js";
-import { areas as seedAreas, floors as seedFloors, layoutTables as seedTables } from "./storeSeeds.js";
 import { loadLocalSiteConfig } from "./localSiteStore.js";
 import { posOrders, staffOrders } from "./storeState.js";
 import type { PosOrderSnapshot } from "./storeState.js";
@@ -44,8 +43,6 @@ export function listOwnerLocations(): OwnerLocation[] {
 }
 
 export function listTables(): Table[] {
-  ensureTableLayoutSeeded();
-
   const rows = getDrizzleDatabase()
     .select({
       id: layoutTables.id,
@@ -73,7 +70,6 @@ export function listTables(): Table[] {
 
 export function getTableLayout(locationId = loadLocalSiteConfig().location.id): TableLayout {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const siteConfig = loadLocalSiteConfig();
   const floors = getDrizzleDatabase()
@@ -109,7 +105,6 @@ export function getTableLayout(locationId = loadLocalSiteConfig().location.id): 
 
 export function createLayoutFloor(locationId: string, request: LayoutFloorCreateRequest): TableLayoutFloor {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const now = Date.now();
   const name = normalizeName(request.name, "Floor name is required.");
@@ -127,7 +122,6 @@ export function createLayoutFloor(locationId: string, request: LayoutFloorCreate
 
 export function updateLayoutFloor(locationId: string, floorId: string, request: LayoutFloorUpdateRequest): TableLayoutFloor {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const current = requireFloor(locationId, floorId);
   const name = request.name === undefined ? current.name : normalizeName(request.name, "Floor name is required.");
@@ -150,7 +144,6 @@ export function updateLayoutFloor(locationId: string, floorId: string, request: 
 
 export function deleteLayoutFloor(locationId: string, floorId: string) {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
   requireFloor(locationId, floorId);
 
   const childCount = getDrizzleDatabase()
@@ -168,7 +161,6 @@ export function deleteLayoutFloor(locationId: string, floorId: string) {
 
 export function createLayoutArea(locationId: string, request: LayoutAreaCreateRequest): TableLayoutArea {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const floor = requireFloor(locationId, normalizeName(request.floor_id, "Floor is required."));
   const now = Date.now();
@@ -187,7 +179,6 @@ export function createLayoutArea(locationId: string, request: LayoutAreaCreateRe
 
 export function updateLayoutArea(locationId: string, areaId: string, request: LayoutAreaUpdateRequest): TableLayoutArea {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const current = requireArea(locationId, areaId);
   const floorId = request.floor_id === undefined
@@ -213,7 +204,6 @@ export function updateLayoutArea(locationId: string, areaId: string, request: La
 
 export function deleteLayoutArea(locationId: string, areaId: string) {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
   requireArea(locationId, areaId);
 
   const childCount = getDrizzleDatabase()
@@ -231,7 +221,6 @@ export function deleteLayoutArea(locationId: string, areaId: string) {
 
 export function createLayoutTable(locationId: string, request: LayoutTableCreateRequest): TableLayoutTable {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const area = requireArea(locationId, normalizeName(request.area_id, "Area is required."));
   const now = Date.now();
@@ -251,7 +240,6 @@ export function createLayoutTable(locationId: string, request: LayoutTableCreate
 
 export function updateLayoutTable(locationId: string, tableId: string, request: LayoutTableUpdateRequest): TableLayoutTable {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
 
   const current = requireTable(locationId, tableId);
   const areaId = request.area_id === undefined
@@ -280,7 +268,6 @@ export function updateLayoutTable(locationId: string, tableId: string, request: 
 
 export function deleteLayoutTable(locationId: string, tableId: string) {
   ensureLocalLocation(locationId);
-  ensureTableLayoutSeeded();
   requireTable(locationId, tableId);
 
   if (findOpenOrderForTable(tableId)) {
@@ -319,65 +306,6 @@ export function tableFromContext(tableContext: TableContext, status: Table["stat
     status,
     areaName: tableContext.area_name ?? ""
   };
-}
-
-function ensureTableLayoutSeeded() {
-  const siteConfig = loadLocalSiteConfig();
-  const row = getDrizzleDatabase()
-    .select({ count: count() })
-    .from(layoutFloors)
-    .where(eq(layoutFloors.locationId, siteConfig.location.id))
-    .get();
-
-  if ((row?.count ?? 0) > 0) {
-    return;
-  }
-
-  const now = Date.now();
-  getDrizzleDatabase().transaction((tx) => {
-    for (const floor of seedFloors) {
-      tx.insert(layoutFloors)
-        .values({
-          id: floor.id,
-          locationId: siteConfig.location.id,
-          name: floor.name,
-          sortOrder: floor.sort_order,
-          createdAt: now,
-          updatedAt: now
-        })
-        .onConflictDoNothing()
-        .run();
-    }
-
-    for (const area of seedAreas) {
-      tx.insert(layoutAreas)
-        .values({
-          id: area.id,
-          floorId: area.floor_id,
-          name: area.name,
-          sortOrder: area.sort_order,
-          createdAt: now,
-          updatedAt: now
-        })
-        .onConflictDoNothing()
-        .run();
-    }
-
-    for (const table of seedTables) {
-      tx.insert(layoutTables)
-        .values({
-          id: table.id,
-          areaId: table.area_id,
-          name: table.name,
-          seats: table.seats,
-          sortOrder: table.sort_order,
-          createdAt: now,
-          updatedAt: now
-        })
-        .onConflictDoNothing()
-        .run();
-    }
-  });
 }
 
 function toLayoutFloor(floor: LayoutFloorRow, areas: LayoutAreaRow[], tables: LayoutTableRow[]): TableLayoutFloor {
@@ -577,7 +505,6 @@ function nextTableSortOrder(areaId: string) {
 }
 
 function locationIdForTable(tableId: string) {
-  ensureTableLayoutSeeded();
   const row = getDrizzleDatabase()
     .select({ locationId: layoutFloors.locationId })
     .from(layoutTables)

@@ -9,7 +9,6 @@ import {
 } from "./commandStore.js";
 import { rebuildKdsTicketsForOrder } from "./kdsStore.js";
 import { rebuildStationPrintJobsForOrder, enqueueReceiptPrintJob } from "./printStore.js";
-import { areas, floors, layoutTables } from "./storeSeeds.js";
 import { startWalleeCloudTillPayment } from "./walleeCloudTillProvider.js";
 import { completePaymentRecoveryJobsForAttempt, ensurePaymentRecoveryJob, getPaymentAttempt, updatePaymentAttempt } from "./paymentAttemptStore.js";
 import type { PaymentProviderResult } from "./paymentProviderTypes.js";
@@ -442,7 +441,8 @@ async function startWalleeTerminalPaymentUnchecked(
 }
 
 export function createOrder(draft: OrderDraft): CreateOrderResult {
-  const table = layoutTables.find((entry) => entry.id === draft.tableId);
+  const layoutEntry = findLayoutTable(draft.tableId);
+  const table = layoutEntry?.table;
 
   if (!table) {
     throw new Error("Unknown table");
@@ -470,7 +470,7 @@ export function createOrder(draft: OrderDraft): CreateOrderResult {
     deviceId: draft.deviceId,
     tableId: table.id,
     tableName: table.name,
-    locationId: locationIdForTable(table.id) ?? undefined,
+    locationId: layoutEntry.floor.location_id,
     guestCount: draft.guestCount,
     status: "OPEN",
     total: items.reduce((sum, item) => sum + item.totalPrice, 0),
@@ -488,7 +488,7 @@ export function createOrder(draft: OrderDraft): CreateOrderResult {
       id: table.id,
       name: table.name,
       status: "OPEN",
-      areaName: areas.find((area) => area.id === table.area_id)?.name ?? ""
+      areaName: layoutEntry.area.name
     }
   };
 }
@@ -782,11 +782,22 @@ function calculateIncludedTax(grossAmount: number, taxRateBps: number) {
 }
 
 function locationIdForTable(tableId: string) {
-  const table = layoutTables.find((entry) => entry.id === tableId);
-  const area = table ? areas.find((entry) => entry.id === table.area_id) : undefined;
-  const floor = area ? floors.find((entry) => entry.id === area.floor_id) : undefined;
+  return findLayoutTable(tableId)?.floor.location_id ?? null;
+}
 
-  return floor?.location_id ?? null;
+function findLayoutTable(tableId: string) {
+  const layout = getTableLayout();
+
+  for (const floor of layout.floors) {
+    for (const area of floor.areas) {
+      const table = area.tables.find((entry) => entry.id === tableId);
+      if (table) {
+        return { floor, area, table };
+      }
+    }
+  }
+
+  return null;
 }
 
 function validateOrderSnapshotRequest(request: CreateOrderSnapshotRequest) {

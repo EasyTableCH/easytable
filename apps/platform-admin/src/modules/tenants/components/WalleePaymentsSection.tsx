@@ -1,5 +1,6 @@
 import { Eye, EyeOff, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -45,7 +46,6 @@ export function WalleePaymentsSection({
   const [form, setForm] = useState(() => createProfileForm(profile));
   const [terminalForm, setTerminalForm] = useState(createTerminalForm());
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showApplicationSecret, setShowApplicationSecret] = useState(false);
   const [showWebhookKey, setShowWebhookKey] = useState(false);
 
@@ -55,7 +55,6 @@ export function WalleePaymentsSection({
 
   async function submitProfile() {
     setIsSaving(true);
-    setError(null);
     try {
       await onSaveProfile({
         space_id: form.space_id,
@@ -65,8 +64,9 @@ export function WalleePaymentsSection({
         enabled: form.enabled
       });
       setForm((current) => ({ ...current, application_user_secret: "", webhook_signature_key: "" }));
+      toast.success("Wallee Konfiguration gespeichert.");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Wallee Konfiguration konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Wallee Konfiguration konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -74,12 +74,12 @@ export function WalleePaymentsSection({
 
   async function submitTerminal() {
     setIsSaving(true);
-    setError(null);
     try {
       await onCreateTerminal(terminalForm);
       setTerminalForm(createTerminalForm());
+      toast.success("Wallee Terminal gespeichert.");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Wallee Terminal konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Wallee Terminal konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -91,11 +91,11 @@ export function WalleePaymentsSection({
     }
 
     setIsSaving(true);
-    setError(null);
     try {
       await onDeleteTerminal(terminal.id);
+      toast.success("Wallee Terminal geloescht.");
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Wallee Terminal konnte nicht geloescht werden.");
+      toast.error(deleteError instanceof Error ? deleteError.message : "Wallee Terminal konnte nicht geloescht werden.");
     } finally {
       setIsSaving(false);
     }
@@ -186,7 +186,6 @@ export function WalleePaymentsSection({
             {profile?.has_application_user_secret ? <Badge variant="outline">Secret gespeichert</Badge> : null}
             {profile?.has_webhook_signature_key ? <Badge variant="outline">Webhook Key gespeichert</Badge> : null}
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
         <div className="grid content-start gap-3">

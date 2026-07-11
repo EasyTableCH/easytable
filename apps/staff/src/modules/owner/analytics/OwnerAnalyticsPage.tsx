@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
-import { RefreshCw, WifiOff } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -43,7 +44,6 @@ export function OwnerAnalyticsPage() {
   const [reports, setReports] = useState<SalesReport[]>([]);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("OFFLINE");
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [businessDayCutoverTime, setBusinessDayCutoverTime] = useState("00:00");
 
   const model = useMemo(() => buildAnalyticsViewModel(reports, filters), [filters, reports]);
@@ -51,7 +51,6 @@ export function OwnerAnalyticsPage() {
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
 
     try {
       const nextMode = await detectConnectionMode();
@@ -64,7 +63,7 @@ export function OwnerAnalyticsPage() {
       setReports(loadedReports);
     } catch (loadError) {
       setReports([]);
-      setError(loadError instanceof Error ? loadError.message : "Analytics konnten nicht geladen werden.");
+      toast.error(loadError instanceof Error ? loadError.message : "Analytics konnten nicht geladen werden.");
     } finally {
       setIsLoading(false);
     }
@@ -101,8 +100,6 @@ export function OwnerAnalyticsPage() {
 
       <AnalyticsFiltersBar filters={filters} categories={categories} onChange={setFilters} onPreset={selectPreset} />
 
-      {error ? <ErrorBanner message={error} onRetry={() => void refresh()} /> : null}
-
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Bruttoumsatz" value={formatMoney(model.grossTotal)} />
         <MetricCard label="Netto" value={formatMoney(model.netTotal)} />
@@ -130,7 +127,7 @@ export function OwnerAnalyticsPage() {
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="date" tickLine={false} axisLine={false} />
                     <YAxis tickFormatter={(value) => formatShortMoney(Number(value))} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />} />
                     <Line dataKey="gross" type="monotone" stroke="var(--color-gross)" strokeWidth={2} dot={false} />
                     <Line dataKey="storno" type="monotone" stroke="var(--color-storno)" strokeWidth={2} dot={false} />
                   </LineChart>
@@ -146,7 +143,7 @@ export function OwnerAnalyticsPage() {
               <CardContent>
                 <ChartContainer className="h-72 w-full" config={paymentChartConfig}>
                   <PieChart>
-                    <ChartTooltip content={<ChartTooltipContent nameKey="method" />} />
+                    <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} nameKey="method" />} />
                     <Pie data={model.paymentSeries} dataKey="total" nameKey="method" innerRadius={58} outerRadius={92}>
                       {model.paymentSeries.map((entry, index) => (
                         <Cell key={entry.method} fill={index === 0 ? "hsl(var(--chart-1))" : index === 1 ? "hsl(var(--chart-2))" : "hsl(var(--chart-3))"} />
@@ -170,7 +167,7 @@ export function OwnerAnalyticsPage() {
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="productName" tickLine={false} axisLine={false} />
                     <YAxis tickFormatter={(value) => formatShortMoney(Number(value))} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />} />
                     <Bar dataKey="total" fill="var(--color-total)" radius={4} />
                   </BarChart>
                 </ChartContainer>
@@ -316,20 +313,6 @@ function PaymentRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between rounded-md bg-muted px-3 py-3 text-sm">
       <span className="font-medium text-muted-foreground">{label}</span>
       <span className="font-semibold">{formatMoney(value)}</span>
-    </div>
-  );
-}
-
-function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-destructive sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <WifiOff className="mt-0.5 size-5 shrink-0" />
-        <p className="break-words text-sm font-medium">{message}</p>
-      </div>
-      <Button onClick={onRetry} type="button" variant="outline">
-        Erneut laden
-      </Button>
     </div>
   );
 }

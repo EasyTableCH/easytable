@@ -34,6 +34,21 @@
     - [ ] Replace remaining technician fields with the guided owner setup wizard
 
 
+- [ ] Define and implement the deployment, discovery and lifecycle architecture
+    - Remove tenant and location selection from build-time `.env` configuration. After Better Auth login, RelaySyncApi must return the user's tenant memberships, locations, roles and connection state.
+    - Automatically select the context only when the user has exactly one valid tenant and location. Otherwise Staff must show an explicit tenant/location selector and validate the saved selection on every session start.
+    - Use the same Staff codebase with two controlled entry points: a local Staff PWA served by LocalMaster for direct LAN operation, and the hosted Staff PWA for RelaySyncApi access outside the restaurant network.
+    - Avoid cloud-HTTPS-to-local-HTTP discovery. Local Staff must verify the LocalMaster identity and bound tenant/location; remote Staff must use RelaySyncApi and idempotent relay commands.
+    - Define local authentication for internet outages. Better Auth remains the cloud identity, while LocalMaster receives authorized location users during bootstrap and supports local PIN/device-token access with a defined offline validity policy.
+    - Extend `/api/auth/me` or add an auth-context endpoint that returns tenant and location context instead of relying on `VITE_RELAY_TENANT_ID` / `VITE_RELAY_LOCATION_ID`.
+    - Build a normal initial setup flow: Platform Admin creates tenant/location/owner, Owner completes account setup in Staff, installs Master Station, claims the location with a short-lived code or QR, and then pairs additional POS/KDS devices locally.
+    - Keep URLs, instance ids and relay addresses out of the normal operator flow. Expose them only in a technician/recovery view.
+    - Package LocalMaster as an automatically starting Windows service with its SQLite data under ProgramData, health diagnostics, firewall setup, backup-before-migration and recovery tooling.
+    - Add signed update channels for LocalMaster and POS-Shell. POS-Shell should use the Tauri updater; LocalMaster needs a service-safe updater with health verification and rollback.
+    - Add an API compatibility contract between LocalMaster and POS/Staff/KDS so clients cannot install an incompatible version. Do not update during open payments or other critical operations.
+    - Preserve LocalMaster as the operational source of truth. Remote writes are successful only after the bound LocalMaster accepts the idempotent command; cloud order/payment data remains a sync/reporting read model.
+
+
 - [ ] Analytics owner module in staff
     - When hovering over the diagrams they show for example "700" instead of 7.00CHF because it uses raw Rappen number instead
 

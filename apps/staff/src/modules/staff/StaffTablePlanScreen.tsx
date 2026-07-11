@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
@@ -27,16 +28,12 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
   const [activeFloorId, setActiveFloorId] = useState("");
   const [activeAreaId, setActiveAreaId] = useState("");
   const [isLoadingLayout, setIsLoadingLayout] = useState(true);
-  const [layoutNotice, setLayoutNotice] = useState<string | null>(null);
   const { connectionMode } = useConnectionModeMonitor();
 
   const loadLayout = useCallback(async (showLoadingState = true) => {
     if (showLoadingState) {
       setIsLoadingLayout(true);
     }
-
-    setLayoutNotice(null);
-
     try {
       const tableLayout = await loadTableLayoutForConnection(connectionMode);
       const firstFloor = tableLayout.floors[0];
@@ -60,7 +57,7 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
       setLayout(null);
       setActiveFloorId("");
       setActiveAreaId("");
-      setLayoutNotice(error instanceof Error ? error.message : "Tischplan konnte nicht geladen werden.");
+      toast.error(error instanceof Error ? error.message : "Tischplan konnte nicht geladen werden.");
     } finally {
       if (showLoadingState) {
         setIsLoadingLayout(false);
@@ -217,7 +214,7 @@ export function StaffTablePlanScreen({ onSelectTable }: StaffTablePlanScreenProp
             <p className="max-w-sm text-sm font-black uppercase text-slate-400">
               {isLoadingLayout
                 ? "Tischplan wird geladen"
-                : layoutNotice ?? "Keine Tische im Tischplan"}
+                : "Keine Tische im Tischplan"}
             </p>
           </div>
         )}

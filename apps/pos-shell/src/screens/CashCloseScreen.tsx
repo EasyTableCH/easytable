@@ -1,5 +1,6 @@
 ﻿import { ArrowLeftIcon, SaveIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@easytable/ui/components/button";
 import { cn } from "@easytable/ui/lib/utils";
 
@@ -28,7 +29,6 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
   const [preview, setPreview] = useState<DayClosePreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const cashDifference = countedCash - (preview?.expected_cash ?? 0);
   const formattedWindow = useMemo(() => {
@@ -87,7 +87,6 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
 
     async function loadPreview() {
       setIsLoadingPreview(true);
-      setNotice(null);
 
       try {
         const loadedPreview = await loadDayClosePreview({
@@ -105,7 +104,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
       } catch {
         if (isMounted) {
           setPreview(null);
-          setNotice("Kassenabschluss konnte nicht berechnet werden.");
+          toast.error("Kassenabschluss konnte nicht berechnet werden.");
         }
       } finally {
         if (isMounted) {
@@ -127,7 +126,6 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
     }
 
     setIsSaving(true);
-    setNotice(null);
 
     try {
       const saved = await saveDayClose({
@@ -138,14 +136,14 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
         terminal_id: getStoredTerminalConfig()?.terminalId ?? "pos-shell",
       });
 
-      setNotice(`Kassenabschluss ${saved.business_date} wurde gespeichert.`);
+      toast.success(`Kassenabschluss ${saved.business_date} wurde gespeichert.`);
       const refreshedPreview = await loadDayClosePreview({
         business_date: businessDate,
         business_day_cutover_time: cutoverTime,
       });
       setPreview(refreshedPreview);
     } catch {
-      setNotice("Kassenabschluss konnte nicht gespeichert werden.");
+      toast.error("Kassenabschluss konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -284,11 +282,6 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
                 Abschluss speichern
               </Button>
 
-              {notice ? (
-                <p className="mt-4 rounded-md bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
-                  {notice}
-                </p>
-              ) : null}
             </section>
           </div>
 

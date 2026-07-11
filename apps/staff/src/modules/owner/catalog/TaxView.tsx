@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@easytable/ui/components/badge";
 import { Button } from "@easytable/ui/components/button";
@@ -172,20 +173,17 @@ type TaxFormState = {
 function TaxFormDialog({ tax, mode, onSubmit }: TaxFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<TaxFormState>(() => createInitialState(tax));
-  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (open) {
       setForm(createInitialState(tax));
-      setError(null);
     }
   }, [open, tax]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setIsSaving(true);
 
     try {
@@ -197,7 +195,7 @@ function TaxFormDialog({ tax, mode, onSubmit }: TaxFormDialogProps) {
       });
       setOpen(false);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Steuer konnte nicht gespeichert werden.");
+      toast.error(submitError instanceof Error ? submitError.message : "Steuer konnte nicht gespeichert werden.");
     } finally {
       setIsSaving(false);
     }
@@ -234,8 +232,6 @@ function TaxFormDialog({ tax, mode, onSubmit }: TaxFormDialogProps) {
             <span className="text-sm font-medium">Sortierung</span>
             <Input min="0" onChange={(event) => setForm({ ...form, sort_order: event.target.value })} required type="number" value={form.sort_order} />
           </label>
-
-          {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
             <Button disabled={isSaving} type="submit">
