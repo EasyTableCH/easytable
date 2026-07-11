@@ -687,6 +687,10 @@ export type LocalMasterIdentity = {
   location_id: string;
   port: number;
   version: string;
+  service_version: string;
+  api_version: number;
+  minimum_client_api_version: number;
+  maximum_client_api_version: number;
 };
 
 export type PairingSessionRequest = {
@@ -705,7 +709,7 @@ export type PairTerminalRequest = {
   code: string;
   terminal_name: string;
   local_master_url: string;
-  role?: "POS_TERMINAL" | "MASTER_POS";
+  role?: "POS_TERMINAL" | "MASTER_POS" | "STAFF_DEVICE";
   device_fingerprint?: string;
 };
 

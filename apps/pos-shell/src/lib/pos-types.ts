@@ -6,6 +6,10 @@ export type LocalMasterIdentity = {
   location_id: string;
   port: number;
   version: string;
+  service_version: string;
+  api_version: number;
+  minimum_client_api_version: number;
+  maximum_client_api_version: number;
   clients?: number;
   orders?: number;
 };

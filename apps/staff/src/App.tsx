@@ -4,13 +4,21 @@ import { Login } from "@easytable/ui/pages/login/Login";
 
 import { AppLayout } from "./layout/AppLayout";
 import { defaultView, type AppView, type StaffModule } from "./layout/navigation";
-import { detectConnectionMode, loadPosSettings, type LocationServiceMode } from "./lib/local-master";
+import {
+  listSelectableStaffContexts,
+  resolveStoredStaffContext,
+  staffContextStorageKey,
+  type ActiveStaffContext,
+  type StaffAuthContext,
+} from "./lib/auth-context";
+import { detectConnectionMode, loadPosSettings, setActiveStaffConnectionContext, type LocationServiceMode } from "./lib/local-master";
 import { AccountSetupPage } from "./modules/account-setup/AccountSetupPage";
 import { KdsPage } from "./modules/kds/KdsPage";
 import { OwnerAnalyticsPage } from "./modules/owner/analytics/OwnerAnalyticsPage";
 import { OwnerCatalogPage } from "./modules/owner/catalog/OwnerCatalogPage";
 import { OwnerEmployeesPage } from "./modules/owner/employees/OwnerEmployeesPage";
 import { OwnerLocationsPage } from "./modules/owner/locations/OwnerLocationsPage";
+import { clearStoredLocalSession, LocalStaffLogin, loadStoredLocalSession, type LocalStaffSession } from "./modules/local-auth/LocalStaffLogin";
 import { ModulePlaceholder } from "./modules/placeholder/ModulePlaceholder";
 import { StaffServicePage } from "./modules/staff/StaffServicePage";
 
@@ -24,16 +32,56 @@ function App() {
 
 function AuthenticatedApp() {
   const { data: sessionData, isPending } = useSession();
-  const [authDetails, setAuthDetails] = useState<{
-    user: any;
-    tenants: Array<{ tenantId: string; role: string; tenantName: string }>;
-  } | null>(null);
+  const [localSession, setLocalSession] = useState<LocalStaffSession | null>(null);
+  const [localRuntime, setLocalRuntime] = useState<{ tenant_id: string; tenant_name: string; location_id: string; location_name: string; local_master_instance_id: string; service_mode: LocationServiceMode } | null>(null);
+  const [localAuthChecked, setLocalAuthChecked] = useState(false);
+  const [authDetails, setAuthDetails] = useState<StaffAuthContext | null>(null);
+  const [activeContext, setActiveContext] = useState<ActiveStaffContext | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState<AppView>(defaultView);
   const [effectiveServiceMode, setEffectiveServiceMode] = useState<LocationServiceMode>("TABLE_SERVICE");
 
   useEffect(() => {
-    if (!sessionData) return;
+    let mounted = true;
+    void fetch("/api/runtime-context")
+      .then(async (response) => response.ok ? response.json() : null)
+      .then(async (runtime) => {
+        if (!mounted || !runtime) return;
+        setLocalRuntime(runtime);
+        setLocalSession(await loadStoredLocalSession());
+      })
+      .catch(() => null)
+      .finally(() => { if (mounted) setLocalAuthChecked(true); });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (localSession && localRuntime) {
+      const context: StaffAuthContext = {
+        user: { id: localSession.user_id, email: localSession.email, name: localSession.display_name, role: "user" },
+        tenants: [{
+          tenantId: localRuntime.tenant_id,
+          tenantName: localRuntime.tenant_name,
+          role: localSession.role,
+          locations: [{
+            id: localRuntime.location_id,
+            name: localRuntime.location_name,
+            status: "ACTIVE",
+            serviceMode: localRuntime.service_mode,
+            localMasterInstanceId: localRuntime.local_master_instance_id,
+            connectionStatus: "PAIRED",
+          }],
+        }],
+      };
+      setAuthDetails(context);
+      setActiveContext(resolveStoredStaffContext(context, null));
+      setAuthLoading(false);
+      return;
+    }
+    if (!sessionData) {
+      setAuthLoading(false);
+      return;
+    }
     
     let isMounted = true;
     async function fetchMe() {
@@ -42,9 +90,11 @@ function AuthenticatedApp() {
           credentials: "include",
         });
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json() as StaffAuthContext;
           if (isMounted) {
             setAuthDetails(data);
+            const storageKey = staffContextStorageKey(data.user.id);
+            setActiveContext(resolveStoredStaffContext(data, window.localStorage.getItem(storageKey)));
           }
         }
       } catch (err) {
@@ -59,7 +109,7 @@ function AuthenticatedApp() {
     return () => {
       isMounted = false;
     };
-  }, [sessionData]);
+  }, [localRuntime, localSession, sessionData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -93,9 +143,9 @@ function AuthenticatedApp() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeContext]);
 
-  if (isPending || (sessionData && authLoading)) {
+  if (isPending || !localAuthChecked || ((sessionData || localSession) && authLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <p className="text-sm font-semibold text-muted-foreground animate-pulse">
@@ -105,21 +155,45 @@ function AuthenticatedApp() {
     );
   }
 
-  if (!sessionData) {
+  if (!sessionData && !localSession && localRuntime) {
+    return <LocalStaffLogin onAuthenticated={setLocalSession} />;
+  }
+
+  if (!sessionData && !localSession) {
     return <Login onSuccess={() => window.location.reload()} />;
   }
 
   const isPlatformAdmin = authDetails?.user?.role === "platform_admin";
-  const targetTenantId = import.meta.env.VITE_RELAY_TENANT_ID;
-  const tenantRelation = authDetails?.tenants?.find((t) => t.tenantId === targetTenantId);
+  const availableContexts = authDetails ? listSelectableStaffContexts(authDetails) : [];
 
-  // If not platform admin, they must belong to this tenant
-  if (!isPlatformAdmin && !tenantRelation) {
+  if (!activeContext && availableContexts.length > 1 && authDetails) {
+    return (
+      <StaffContextSelection
+        contexts={availableContexts}
+        onSelect={(context) => {
+          window.localStorage.setItem(staffContextStorageKey(authDetails.user.id), context.tenantId + ":" + context.locationId);
+          setActiveContext(context);
+        }}
+        onLogout={async () => {
+          await signOut();
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
+  setActiveStaffConnectionContext(activeContext ? {
+    tenantId: activeContext.tenantId,
+    locationId: activeContext.locationId,
+    localMasterInstanceId: activeContext.localMasterInstanceId,
+  } : null);
+
+  if (!activeContext) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-center">
         <h1 className="text-2xl font-bold text-destructive">Zugriff verweigert</h1>
         <p className="max-w-md text-muted-foreground">
-          Dein Account ({sessionData.user.email}) hat keinen Zugriff auf diesen Mandanten.
+          Dein Account ({sessionData?.user.email ?? localSession?.email}) hat keinen Zugriff auf diesen Mandanten.
         </p>
         <button
           className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -134,14 +208,15 @@ function AuthenticatedApp() {
     );
   }
 
-  const userRole = isPlatformAdmin ? "platform_admin" : tenantRelation?.role;
+  const userRole = isPlatformAdmin ? "platform_admin" : activeContext.role;
   const currentUser = {
-    name: authDetails?.user?.name ?? sessionData.user.name,
-    email: authDetails?.user?.email ?? sessionData.user.email,
+    name: authDetails?.user?.name ?? sessionData?.user.name ?? localSession?.display_name,
+    email: authDetails?.user?.email ?? sessionData?.user.email ?? localSession?.email,
     role: userRole,
   };
   const handleLogout = async () => {
-    await signOut();
+    if (localSession) clearStoredLocalSession();
+    else await signOut();
     window.location.reload();
   };
 
@@ -226,6 +301,39 @@ function AuthenticatedApp() {
         <ModulePlaceholder module={activeView.module} />
       )}
     </AppLayout>
+  );
+}
+
+function StaffContextSelection({
+  contexts,
+  onSelect,
+  onLogout,
+}: {
+  contexts: ActiveStaffContext[];
+  onSelect: (context: ActiveStaffContext) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <main className="grid min-h-screen place-items-center bg-background p-6">
+      <section className="w-full max-w-xl rounded-md border bg-card p-6 shadow-sm">
+        <h1 className="text-2xl font-semibold">Standort auswählen</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Wähle den operativen Kontext für diese Staff-Sitzung.</p>
+        <div className="mt-5 grid gap-3">
+          {contexts.map((context) => (
+            <button
+              className="rounded-md border px-4 py-3 text-left hover:bg-muted"
+              key={context.tenantId + ":" + context.locationId}
+              onClick={() => onSelect(context)}
+              type="button"
+            >
+              <span className="block font-semibold">{context.locationName}</span>
+              <span className="text-sm text-muted-foreground">{context.tenantName} · {context.role}</span>
+            </button>
+          ))}
+        </div>
+        <button className="mt-5 text-sm font-medium text-muted-foreground underline" onClick={onLogout} type="button">Abmelden</button>
+      </section>
+    </main>
   );
 }
 

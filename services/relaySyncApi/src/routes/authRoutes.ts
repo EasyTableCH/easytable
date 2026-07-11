@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { fromNodeHeaders } from "better-auth/node";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { getDrizzleDatabase } from "../db/client.js";
-import { tenantUsers, tenants } from "../db/schema.js";
+import { locations, tenantUserLocations, tenantUsers, tenants } from "../db/schema.js";
 import { completeAccountSetup, getAccountSetupContext } from "../store/accountSetupStore.js";
 import type { AccountSetupCompleteRequest } from "../types.js";
 
@@ -38,9 +38,59 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       .innerJoin(tenants, eq(tenantUsers.tenantId, tenants.id))
       .where(eq(tenantUsers.userId, session.user.id));
 
+    const isPlatformAdmin = session.user.role === "platform_admin";
+    const availableLocations = isPlatformAdmin
+      ? await db
+        .select({
+          tenantId: locations.tenantId,
+          id: locations.id,
+          name: locations.name,
+          status: locations.status,
+          serviceMode: locations.serviceMode,
+          localMasterInstanceId: locations.localMasterInstanceId,
+        })
+        .from(locations)
+        .where(eq(locations.status, "ACTIVE"))
+      : await db
+        .select({
+          tenantId: locations.tenantId,
+          id: locations.id,
+          name: locations.name,
+          status: locations.status,
+          serviceMode: locations.serviceMode,
+          localMasterInstanceId: locations.localMasterInstanceId,
+        })
+        .from(tenantUserLocations)
+        .innerJoin(locations, and(
+          eq(tenantUserLocations.tenantId, locations.tenantId),
+          eq(tenantUserLocations.locationId, locations.id),
+        ))
+        .where(and(
+          eq(tenantUserLocations.userId, session.user.id),
+          eq(tenantUserLocations.isActive, 1),
+          eq(locations.status, "ACTIVE"),
+        ));
+
+    const tenantRows = isPlatformAdmin
+      ? await db.select({ tenantId: tenants.id, tenantName: tenants.name }).from(tenants).where(eq(tenants.status, "ACTIVE"))
+      : userTenants;
+
     return {
       user: session.user,
-      tenants: userTenants,
+      tenants: tenantRows.map((tenant) => ({
+        ...tenant,
+        role: isPlatformAdmin ? "platform_admin" : ("role" in tenant ? tenant.role : "platform_admin"),
+        locations: availableLocations
+          .filter((location) => location.tenantId === tenant.tenantId)
+          .map((location) => ({
+            id: location.id,
+            name: location.name,
+            status: location.status,
+            serviceMode: location.serviceMode,
+            localMasterInstanceId: location.localMasterInstanceId,
+            connectionStatus: location.localMasterInstanceId ? "PAIRED" : "UNPAIRED",
+          })),
+      })),
     };
   });
 

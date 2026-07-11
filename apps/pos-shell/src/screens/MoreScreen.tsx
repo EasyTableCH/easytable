@@ -61,6 +61,7 @@ import type {
   TerminalPairingConfig
 } from "../lib/pos-types";
 import { CashCloseScreen } from "./CashCloseScreen";
+import { checkForPosUpdate } from "../lib/updater";
 import { PosBottomNav } from "./PosBottomNav";
 import { StornoScreen } from "./StornoScreen";
 
@@ -520,6 +521,18 @@ function LocalMasterSettingsScreen({ onBack }: { onBack: () => void }) {
             >
               <UnlinkIcon className="size-4" />
               Neu koppeln
+            </Button>
+            <Button
+              className="mt-3 h-11 w-full gap-2 rounded-md font-black"
+              disabled={isBusy}
+              variant="outline"
+              onClick={() => runAction(async () => {
+                const update = await checkForPosUpdate();
+                setStatus(update.available ? "POS-Update " + update.version + " verfügbar" : "POS ist aktuell");
+              })}
+            >
+              <RefreshCwIcon className="size-4" />
+              Nach POS-Update suchen
             </Button>
           </section>
         </div>

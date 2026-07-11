@@ -8,6 +8,7 @@ import { registerHealthRoutes } from "./routes/healthRoutes.js";
 import { registerLocalMasterRoutes } from "./routes/localMasterRoutes.js";
 import { registerOwnerRoutes } from "./routes/ownerRoutes.js";
 import { registerPowerSyncRoutes } from "./routes/powersyncRoutes.js";
+import { registerReleaseRoutes } from "./routes/releaseRoutes.js";
 import { registerStaffRoutes } from "./routes/staffRoutes.js";
 import { registerWebhookRoutes } from "./routes/webhookRoutes.js";
 import { ApiError } from "./store/errors.js";
@@ -47,6 +48,7 @@ export async function buildServer() {
   await app.register(registerLocalMasterRoutes);
   await app.register(registerWebhookRoutes);
   await app.register(registerPowerSyncRoutes);
+  await app.register(registerReleaseRoutes);
   await app.register(registerStaffRoutes);
   await app.register(registerOwnerRoutes);
 
