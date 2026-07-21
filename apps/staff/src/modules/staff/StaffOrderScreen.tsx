@@ -21,6 +21,7 @@ import { cn } from "@easytable/ui/lib/utils";
 
 import type { StaffTableContext } from "../../layout/navigation";
 import {
+  adjustComplimentaryQuantityForConnection,
   createOrderSnapshotForConnection,
   loadOpenTableOrderBasketForConnection,
   loadProductsForConnection,
@@ -63,6 +64,7 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   const [selectedCategory, setSelectedCategory] = useState(allCategoryLabel);
   const [catalogViewMode, setCatalogViewMode] = useState<CatalogViewMode>("grid");
   const [basketLines, setBasketLines] = useState<BasketLine[]>([]);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<StaffProduct | null>(null);
   const [variantGroups, setVariantGroups] = useState<ProductVariantGroup[]>([]);
   const [activeVariantStep, setActiveVariantStep] = useState(0);
@@ -136,15 +138,18 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
     try {
       if (connectionMode === "OFFLINE") {
         setBasketLines([]);
+        setOpenOrderId(null);
         return;
       }
 
       const openBasket = await loadOpenTableOrderBasketForConnection(connectionMode, tableContext.table_id);
       setBasketLines(openBasket?.lines ?? []);
+      setOpenOrderId(openBasket?.order_id ?? null);
       setDraftChanges(false);
     } catch (error) {
       console.warn("Could not load open table basket.", error);
       setBasketLines([]);
+      setOpenOrderId(null);
       toast.error("Offener Tischauftrag konnte nicht geladen werden.");
     }
   }, [connectionMode, tableContext.table_id]);
@@ -283,7 +288,7 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
             ? {
                 ...line,
                 quantity: line.quantity + 1,
-                line_total: line.unit_total * (line.quantity + 1),
+                line_total: line.line_total + line.unit_total,
               }
             : line,
         );
@@ -305,6 +310,8 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
           variants,
           unit_total: unitTotal,
           quantity: 1,
+          complimentary_quantity: 0,
+          complimentary_value: 0,
           line_total: unitTotal,
         },
       ];
@@ -323,13 +330,14 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
           return [];
         }
 
-        return [
-          {
-            ...line,
-            quantity: line.quantity - 1,
-            line_total: line.unit_total * (line.quantity - 1),
-          },
-        ];
+        const hasChargedUnit = line.quantity > line.complimentary_quantity;
+        return [{
+          ...line,
+          quantity: line.quantity - 1,
+          complimentary_quantity: hasChargedUnit ? line.complimentary_quantity : line.complimentary_quantity - 1,
+          complimentary_value: hasChargedUnit ? line.complimentary_value : line.complimentary_value - line.unit_total,
+          line_total: hasChargedUnit ? line.line_total - line.unit_total : line.line_total,
+        }];
       }),
     );
   }
@@ -337,6 +345,38 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
   function removeBasketLine(lineId: string) {
     setDraftChanges(true);
     setBasketLines((current) => current.filter((line) => line.id !== lineId));
+  }
+
+  function offerBasketLine(lineId: string) {
+    const line = basketLines.find((candidate) => candidate.id === lineId);
+    if (!line || line.complimentary_quantity >= line.quantity) return;
+    const nextQuantity = line.complimentary_quantity + 1;
+    setDraftChanges(true);
+    setBasketLines((current) => current.map((candidate) => candidate.id !== lineId ? candidate : {
+      ...candidate,
+      complimentary_quantity: nextQuantity,
+      complimentary_value: nextQuantity * candidate.unit_total,
+      line_total: (candidate.quantity - nextQuantity) * candidate.unit_total,
+    }));
+    if (openOrderId) void adjustComplimentaryQuantityForConnection(connectionMode, openOrderId, lineId, nextQuantity).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "Offerieren konnte nicht gespeichert werden.");
+    });
+  }
+
+  function undoOfferBasketLine(lineId: string) {
+    const line = basketLines.find((candidate) => candidate.id === lineId);
+    if (!line || line.complimentary_quantity <= 0) return;
+    const nextQuantity = line.complimentary_quantity - 1;
+    setDraftChanges(true);
+    setBasketLines((current) => current.map((candidate) => candidate.id !== lineId ? candidate : {
+      ...candidate,
+      complimentary_quantity: nextQuantity,
+      complimentary_value: nextQuantity * candidate.unit_total,
+      line_total: (candidate.quantity - nextQuantity) * candidate.unit_total,
+    }));
+    if (openOrderId) void adjustComplimentaryQuantityForConnection(connectionMode, openOrderId, lineId, nextQuantity).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "Offerieren konnte nicht rückgängig gemacht werden.");
+    });
   }
 
   async function handleCreateOrderSnapshot() {
@@ -480,6 +520,8 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
             isSubmitting={isCreatingOrder}
             onDecreaseLine={decreaseBasketLine}
             onRemoveLine={removeBasketLine}
+            onOfferLine={offerBasketLine}
+            onUndoOfferLine={undoOfferBasketLine}
             onCreateOrder={() => void handleCreateOrderSnapshot()}
           />
         </div>
@@ -515,6 +557,8 @@ export function StaffOrderScreen({ tableContext, onBackToTables }: StaffOrderScr
             isSubmitting={isCreatingOrder}
             onDecreaseLine={decreaseBasketLine}
             onRemoveLine={removeBasketLine}
+            onOfferLine={offerBasketLine}
+            onUndoOfferLine={undoOfferBasketLine}
             onCreateOrder={() => void handleCreateOrderSnapshot()}
           />
         </DrawerContent>

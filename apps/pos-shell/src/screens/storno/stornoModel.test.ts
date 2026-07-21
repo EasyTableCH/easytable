@@ -14,6 +14,7 @@ const snapshot: OrderSnapshotResponse = {
   order_number: "POS-1",
   snapshot_type: "PAID",
   table_context: null,
+  actor: null,
   lines: [{
     id: "line_1",
     product_id: "prod_1",
@@ -28,6 +29,8 @@ const snapshot: OrderSnapshotResponse = {
     variants: [],
     unit_total: 400,
     quantity: 2,
+    complimentary_quantity: 0,
+    complimentary_value: 0,
     line_total: 800
   }, {
     id: "line_2",
@@ -43,6 +46,8 @@ const snapshot: OrderSnapshotResponse = {
     variants: [],
     unit_total: 300,
     quantity: 1,
+    complimentary_quantity: 0,
+    complimentary_value: 0,
     line_total: 300
   }],
   subtotal: 1100,

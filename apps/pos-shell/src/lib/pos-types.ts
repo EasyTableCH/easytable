@@ -208,7 +208,30 @@ export type BasketLine = {
   variants: BasketLineVariant[];
   unit_total: number;
   quantity: number;
+  complimentary_quantity: number;
+  complimentary_value: number;
   line_total: number;
+};
+
+export type LocalPosUser = {
+  user_id: string;
+  display_name: string;
+  role: string;
+};
+
+export type LocalPosSession = LocalPosUser & {
+  token: string;
+  email: string;
+  device_id: string;
+  expires_at: number;
+};
+
+export type OrderActor = {
+  user_id: string;
+  display_name: string;
+  role: string;
+  device_id: string;
+  terminal_id: string | null;
 };
 
 export type CreatedOrderSnapshot = {
@@ -229,6 +252,7 @@ export type CreateOrderSnapshotRequest = {
   request_id: string;
   lines: BasketLine[];
   table_context: TableContext;
+  actor?: OrderActor;
 };
 
 export type PaymentMethod = "CASH" | "WALLEE_TERMINAL";
@@ -254,6 +278,16 @@ export type PaymentRequest = {
   received_cash?: number;
   change_given?: number;
   terminal_id?: string;
+};
+
+export type ComplimentaryOrderResult = {
+  order_id: string;
+  order_number: string;
+  status: "COMPLETED";
+  total: 0;
+  complimentary_value: number;
+  terminal_id: string | null;
+  completed_at: number;
 };
 
 export type WalleeTerminalPaymentRequest = {
@@ -304,9 +338,10 @@ export type OrderSnapshotResponse = {
   id: string;
   order_id: string;
   order_number: string;
-  snapshot_type: "PAID";
+  snapshot_type: "PAID" | "COMPLIMENTARY";
   table_context: TableContext | null;
   lines: BasketLine[];
+  actor: OrderActor | null;
   subtotal: number;
   tax_total: number;
   total: number;
@@ -351,7 +386,7 @@ export type CreateOrderStornoRequest = {
 export type SalesLedgerEntry = {
   id: string;
   request_id: string;
-  entry_type: "SALE_COMPLETED" | "PAYMENT_RECORDED" | "ORDER_VOIDED" | "ORDER_PARTIALLY_VOIDED" | "REFUND_RECORDED";
+  entry_type: "SALE_COMPLETED" | "COMPLIMENTARY_RECORDED" | "PAYMENT_RECORDED" | "ORDER_VOIDED" | "ORDER_PARTIALLY_VOIDED" | "REFUND_RECORDED";
   order_id: string;
   order_number: string;
   payment_id: string | null;
@@ -360,9 +395,16 @@ export type SalesLedgerEntry = {
   product_id: string | null;
   product_name: string | null;
   product_category: string | null;
+  tax_code_id: string | null;
+  tax_rate_bps: number;
   quantity: number;
   gross_amount: number;
   tax_amount: number;
+  complimentary_value: number;
+  actor_user_id: string | null;
+  actor_display_name: string | null;
+  actor_role: string | null;
+  actor_device_id: string | null;
   payment_method: string | null;
   terminal_id: string | null;
   provider: string | null;
@@ -481,7 +523,10 @@ export type DayClosePreview = {
   expected_total: number;
   order_count: number;
   item_count: number;
+  complimentary_quantity: number;
+  complimentary_value: number;
   product_sales: DayCloseProductSale[];
+  complimentary_sales: DayCloseProductSale[];
   existing_close: {
     counted_cash: number;
     cash_difference: number;

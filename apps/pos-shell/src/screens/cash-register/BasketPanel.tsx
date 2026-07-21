@@ -1,4 +1,4 @@
-import { MinusIcon, ReceiptTextIcon, Trash2Icon } from "lucide-react";
+import { GiftIcon, MinusIcon, ReceiptTextIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
 import { cn } from "@easytable/ui/lib/utils";
@@ -15,6 +15,8 @@ type BasketPanelProps = {
   showBookAction?: boolean;
   onDecreaseLine: (lineId: string) => void;
   onRemoveLine: (lineId: string) => void;
+  onOfferLine: (lineId: string) => void;
+  onUndoOfferLine: (lineId: string) => void;
   onCreateOrder: () => void;
   onStartPayment: () => void;
 };
@@ -28,6 +30,8 @@ export function BasketPanel({
   showBookAction = true,
   onDecreaseLine,
   onRemoveLine,
+  onOfferLine,
+  onUndoOfferLine,
   onCreateOrder,
   onStartPayment,
 }: BasketPanelProps) {
@@ -79,12 +83,21 @@ export function BasketPanel({
                             .join(", ")}
                         </p>
                       ) : null}
+                      {line.complimentary_quantity > 0 ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700">
+                          <GiftIcon className="size-3.5 shrink-0" />
+                          <span className="min-w-32 flex-1">{line.quantity - line.complimentary_quantity} berechnet · {line.complimentary_quantity} offeriert ({formatChf(line.complimentary_value)})</span>
+                          <Button className="h-7 shrink-0 px-2 text-xs" onClick={() => onUndoOfferLine(line.id)} size="sm" variant="ghost">
+                            <RotateCcwIcon className="size-3.5" /> Zurück
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                       {formatChf(line.line_total)}
                     </p>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
                       size="icon"
@@ -93,6 +106,15 @@ export function BasketPanel({
                       onClick={() => onDecreaseLine(line.id)}
                     >
                       <MinusIcon className="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      disabled={line.complimentary_quantity >= line.quantity}
+                      aria-label={`${line.product_name} einmal offerieren`}
+                      onClick={() => onOfferLine(line.id)}
+                    >
+                      <GiftIcon className="size-4" />
                     </Button>
                     <Button
                       variant="destructive"
@@ -111,7 +133,7 @@ export function BasketPanel({
         )}
       </div>
       <div className="flex h-16 shrink-0 items-center justify-between border-t bg-muted/20 px-4">
-        <span className="text-sm font-medium text-muted-foreground">Total</span>
+        <div><p className="text-sm font-medium text-muted-foreground">Total</p><p className="text-xs text-emerald-700">Offeriert {formatChf(lines.reduce((sum, line) => sum + line.complimentary_value, 0))}</p></div>
         <span className="text-xl font-semibold tabular-nums text-foreground">{formatChf(total)}</span>
       </div>
       <div className={cn("grid shrink-0 gap-3 border-t bg-background p-4", showBookAction ? "grid-cols-2" : "grid-cols-1")}>
@@ -130,7 +152,7 @@ export function BasketPanel({
           disabled={lines.length === 0 || isSubmitting}
           onClick={onStartPayment}
         >
-          {payLabel}
+          {total === 0 ? "Gratis abschließen" : payLabel}
         </Button>
       </div>
     </aside>

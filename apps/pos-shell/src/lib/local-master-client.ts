@@ -11,6 +11,8 @@ import type {
   LocalDevice,
   LocalDeviceInput,
   LocalMasterIdentity,
+  LocalPosSession,
+  LocalPosUser,
   PaymentRequest,
   OrderSnapshotListItem,
   OrderSnapshotResponse,
@@ -33,6 +35,7 @@ import type {
   TerminalRecord,
   StornoResult,
   WalleeTerminalPaymentRequest,
+  ComplimentaryOrderResult,
 } from "./pos-types";
 
 export type LocalMasterEvent = {
@@ -49,6 +52,7 @@ declare global {
 }
 
 const terminalConfigStorageKey = "easytable.pos.terminalConfig";
+const posSessionStorageKey = "easytable.pos.local-session";
 const posClientApiVersion = 1;
 const configuredUrl =
   (import.meta.env.VITE_LOCAL_MASTER_URL as string | undefined) ??
@@ -224,10 +228,12 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function writeJsonFrom<T>(baseUrl: string, path: string, body: unknown, method = "POST"): Promise<T> {
+  const session = getStoredPosSession();
   const response = await fetch(normalizeBaseUrl(baseUrl) + path, {
     method,
     headers: {
       "Content-Type": "application/json",
+      ...(session ? { Authorization: "Bearer " + session.token } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -238,6 +244,56 @@ async function writeJsonFrom<T>(baseUrl: string, path: string, body: unknown, me
   }
 
   return (await response.json()) as T;
+}
+
+export function getStoredPosSession(): LocalPosSession | null {
+  const raw = window.localStorage.getItem(posSessionStorageKey);
+  if (!raw) return null;
+  try {
+    const session = JSON.parse(raw) as LocalPosSession;
+    return session.expires_at > Date.now() ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadStoredPosSession() {
+  const session = getStoredPosSession();
+  if (!session) return null;
+  const response = await fetch(getLocalMasterUrl() + "/api/local-auth/session", { headers: { Authorization: "Bearer " + session.token } });
+  if (!response.ok) {
+    clearStoredPosSession();
+    return null;
+  }
+  return await response.json() as LocalPosSession;
+}
+
+export function clearStoredPosSession() {
+  window.localStorage.removeItem(posSessionStorageKey);
+}
+
+export async function loadLocalPosUsers() {
+  const config = getStoredTerminalConfig();
+  if (!config) throw new Error("POS ist noch nicht mit LocalMaster gekoppelt.");
+  const response = await fetch(getLocalMasterUrl() + "/api/local-auth/users", { headers: {
+    "x-easytable-device-id": config.terminalId,
+    "x-easytable-device-secret": config.terminalSecret
+  } });
+  if (!response.ok) throw new Error(await response.text());
+  return await response.json() as LocalPosUser[];
+}
+
+export async function loginLocalPos(userId: string, pin: string) {
+  const config = getStoredTerminalConfig();
+  if (!config) throw new Error("POS ist noch nicht mit LocalMaster gekoppelt.");
+  const session = await writeJson<LocalPosSession>("/api/local-auth/pin", { request: {
+    device_id: config.terminalId,
+    device_secret: config.terminalSecret,
+    user_id: userId,
+    pin
+  } });
+  window.localStorage.setItem(posSessionStorageKey, JSON.stringify(session));
+  return session;
 }
 
 export function loadTableLayout() {
@@ -273,6 +329,26 @@ export function completeCashPayment(
 
 export function startWalleeTerminalPayment(request: WalleeTerminalPaymentRequest) {
   return writeJson<PaymentResult>("/api/payments/wallee-terminal/start", { request });
+}
+
+export function completeComplimentaryOrder(request: {
+  request_id: string;
+  lines: BasketLine[];
+  table_context: TableContext | null;
+  terminal_id?: string;
+}) {
+  return writeJson<ComplimentaryOrderResult>("/api/orders/complimentary/complete", { request });
+}
+
+export function adjustComplimentaryQuantity(orderId: string, lineId: string, complimentaryQuantity: number) {
+  return writeJson<OpenTableOrderBasket>(
+    "/api/orders/" + encodeURIComponent(orderId) + "/complimentary",
+    { request: {
+      request_id: createClientRequestId("complimentary"),
+      line_id: lineId,
+      complimentary_quantity: complimentaryQuantity
+    } }
+  );
 }
 
 export function getPaymentAttempt(attemptId: string) {
