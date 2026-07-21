@@ -6,6 +6,7 @@
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Card, CardContent } from "@easytable/ui/components/card";
 
 import type { PosScreen } from "../App";
 import {
@@ -54,29 +55,6 @@ type CashRegisterScreenProps = {
 const allCategoryLabel = "Alle";
 const pendingWalleeAttemptStorageKey = "easytable.pending-wallee-attempt";
 type CatalogViewMode = "grid" | "list";
-
-const productVisuals = [
-  {
-    tone: "from-slate-50 to-slate-100",
-    accent: "text-slate-300",
-  },
-  {
-    tone: "from-zinc-50 to-slate-100",
-    accent: "text-slate-300",
-  },
-  {
-    tone: "from-cyan-50 via-white to-indigo-100",
-    accent: "text-cyan-700",
-  },
-  {
-    tone: "from-stone-50 via-white to-amber-100",
-    accent: "text-stone-600",
-  },
-  {
-    tone: "from-neutral-50 via-white to-rose-100",
-    accent: "text-rose-400",
-  },
-] as const;
 
 export function CashRegisterScreen({
   serviceMode,
@@ -224,14 +202,7 @@ export function CashRegisterScreen({
     };
   }, [tableContext]);
 
-  const productCards = useMemo<ProductCard[]>(
-    () =>
-      products.map((product, index) => ({
-        ...product,
-        ...productVisuals[index % productVisuals.length],
-      })),
-    [products],
-  );
+  const productCards = useMemo<ProductCard[]>(() => products, [products]);
 
   const productCategories = useMemo(
     () => [
@@ -598,38 +569,31 @@ export function CashRegisterScreen({
               </nav>
             </section>
 
-            <aside className="flex min-w-0 flex-col justify-center border-l border-slate-200 bg-slate-50 px-5">
-              <p className="truncate text-sm font-black uppercase text-indigo-800">
-                {tableContext
-                  ? `Tisch ${tableContext.table_name} Â· ${tableContext.area_name}`
-                  : isCounterService
-                    ? "Counterbetrieb"
-                    : "Tischbetrieb"}
-              </p>
-              <p className="truncate text-[0.7rem] font-bold uppercase text-slate-400">
-                {basketLines.length === 0
-                  ? tableContext
-                    ? `${tableContext.floor_name} Â· ${tableContext.seats} Sitzplatze`
-                    : isCounterService
-                      ? "Direktverkauf"
-                      : "Keine Artikel gewahlt"
-                  : `${basketLines.length} Positionen`}
-              </p>
-            </aside>
+            {tableContext ? (
+              <aside className="flex min-w-0 items-center border-l bg-background px-5">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  Tisch {tableContext.table_name}
+                </p>
+              </aside>
+            ) : null}
           </div>
         </header>
       ) : null}
 
       <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(15rem,24vw,22rem)] overflow-hidden">
         <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4">
-          <div className="mb-4 flex justify-end">
-            <div className="grid h-12 grid-cols-2 rounded-md border border-slate-200 bg-white p-1 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Produkte</p>
+              <p className="text-xs text-muted-foreground">{filteredProductCards.length} in dieser Ansicht</p>
+            </div>
+            <div className="grid h-11 grid-cols-2 rounded-lg bg-muted p-1">
               <button
                 className={[
-                  "flex min-w-28 items-center justify-center gap-2 rounded px-3 text-sm font-black uppercase transition active:scale-[0.98]",
+                  "flex min-w-24 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition active:scale-[0.98]",
                   catalogViewMode === "grid"
-                    ? "bg-slate-950 text-white shadow-sm"
-                    : "text-slate-500 active:bg-slate-100",
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/10"
+                    : "text-muted-foreground hover:text-foreground",
                 ].join(" ")}
                 onClick={() => setCatalogViewMode("grid")}
               >
@@ -638,10 +602,10 @@ export function CashRegisterScreen({
               </button>
               <button
                 className={[
-                  "flex min-w-28 items-center justify-center gap-2 rounded px-3 text-sm font-black uppercase transition active:scale-[0.98]",
+                  "flex min-w-24 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition active:scale-[0.98]",
                   catalogViewMode === "list"
-                    ? "bg-slate-950 text-white shadow-sm"
-                    : "text-slate-500 active:bg-slate-100",
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/10"
+                    : "text-muted-foreground hover:text-foreground",
                 ].join(" ")}
                 onClick={() => setCatalogViewMode("list")}
               >
@@ -652,66 +616,51 @@ export function CashRegisterScreen({
           </div>
 
           {catalogViewMode === "grid" ? (
-            <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
-              {filteredProductCards.map((product, index) => (
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-6">
+              {filteredProductCards.map((product) => (
                 <button
                   key={product.id}
-                  className="group flex aspect-[1.08] min-h-44 flex-col overflow-hidden rounded-md bg-white text-left shadow-md shadow-slate-200/80 ring-1 ring-slate-200 transition active:scale-[0.985]"
+                  className="group aspect-square min-h-56 text-left transition active:scale-[0.975]"
                   onClick={() => void handleProductPress(product)}
                 >
-                  <div
-                    className={`relative flex flex-1 items-center justify-center bg-gradient-to-br ${product.tone}`}
-                  >
-                    {index < 2 ? (
-                      <BoxesIcon className="size-16 text-slate-300" />
-                    ) : (
-                      <div
-                        className={`flex size-20 items-center justify-center rounded-md bg-white/50 ${product.accent}`}
-                      >
-                        <BoxesIcon className="size-14" />
-                      </div>
-                    )}
+                  <Card className="h-full gap-0 overflow-hidden rounded-2xl py-0 shadow-xl transition group-hover:-translate-y-0.5 group-hover:shadow-md group-active:bg-muted/30">
+                  <div className="relative flex min-h-0 flex-1 items-center justify-center bg-muted/40">
+                    <BoxesIcon className="size-14 text-slate-950" strokeWidth={1.75} />
                   </div>
-                  <div className="flex min-h-16 items-end justify-between gap-2 px-3 py-2">
+                  <CardContent className="flex min-h-20 items-center justify-between gap-3 p-4">
                     <div className="min-w-0">
-                      <p className="truncate text-base font-black text-slate-950">
+                      <p className="truncate text-base font-semibold text-foreground">
                         {product.name}
                       </p>
-                      <p className="text-sm font-extrabold text-slate-500">
+                      <p className="mt-1 text-sm font-medium text-muted-foreground">
                         {formatChf(product.price)}
                       </p>
                     </div>
-                    {index > 1 ? (
-                      <span className="shrink-0 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-black text-indigo-700">
-                        Varianten
-                      </span>
-                    ) : null}
-                  </div>
+                  </CardContent>
+                  </Card>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {filteredProductCards.map((product) => (
                 <button
                   key={product.id}
-                  className="flex min-h-20 items-center gap-3 rounded-md bg-white px-4 text-left shadow-sm ring-1 ring-slate-200 transition active:scale-[0.99] active:bg-slate-50"
+                  className="group flex min-h-20 items-center gap-4 rounded-xl bg-card px-4 text-left shadow-sm ring-1 ring-foreground/10 transition hover:bg-muted/30 active:scale-[0.985] active:bg-muted"
                   onClick={() => void handleProductPress(product)}
                 >
-                  <div
-                    className={`flex size-14 shrink-0 items-center justify-center rounded-md bg-gradient-to-br ${product.tone}`}
-                  >
-                    <BoxesIcon className={`size-7 ${product.accent}`} />
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted ring-1 ring-foreground/5">
+                    <BoxesIcon className="size-7 text-slate-950" strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-black text-slate-950">
+                      <p className="truncate text-base font-semibold text-foreground">
                       {product.name}
                     </p>
-                    <p className="truncate text-xs font-black uppercase text-slate-400">
+                    <p className="mt-1 truncate text-sm text-muted-foreground">
                       {product.category}
                     </p>
                   </div>
-                  <p className="shrink-0 text-lg font-black text-slate-950">
+                  <p className="shrink-0 text-lg font-semibold tabular-nums text-foreground">
                     {formatChf(product.price)}
                   </p>
                 </button>

@@ -22,10 +22,11 @@ type PaymentScreenProps = {
 type PaymentView = "methods" | "cash";
 
 const cashSuggestions = [
-  { label: "5 CHF", valueInRappen: 500 },
+  { label: "10 CHF", valueInRappen: 1000 },
   { label: "20 CHF", valueInRappen: 2000 },
   { label: "50 CHF", valueInRappen: 5000 },
   { label: "100 CHF", valueInRappen: 10000 },
+  { label: "200 CHF", valueInRappen: 20000 },
 ];
 
 export function PaymentScreen({
@@ -72,27 +73,27 @@ export function PaymentScreen({
 
   if (paymentView === "cash") {
     return (
-      <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f6f7fb] text-slate-950">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-300 bg-white px-5">
+      <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-muted/30 text-foreground">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="size-10 rounded-md text-slate-500"
-              aria-label="Zurueck zur Zahlungsart"
+              className="size-10 text-muted-foreground"
+              aria-label="Zurück zur Zahlungsart"
               disabled={isSubmitting}
               onClick={() => setPaymentView("methods")}
             >
               <ArrowLeftIcon className="size-5" />
             </Button>
-            <h1 className="truncate text-xl font-black text-slate-950">
+            <h1 className="truncate text-lg font-semibold text-foreground">
               Barzahlung
             </h1>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="size-10 rounded-md text-slate-500"
+            className="size-10 text-muted-foreground"
             aria-label="Zahlung abbrechen"
             disabled={isSubmitting}
             onClick={onCancel}
@@ -101,8 +102,8 @@ export function PaymentScreen({
           </Button>
         </header>
 
-        <section className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8">
-          <div className="grid w-full max-w-5xl grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(22rem,29rem)_minmax(20rem,27rem)]">
+        <section className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-5 lg:p-6">
+          <div className="grid w-full max-w-5xl grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(22rem,28rem)_minmax(20rem,27rem)]">
             <TouchNumberPad
               valueInRappen={receivedAmount}
               onChangeValueInRappen={setReceivedAmount}
@@ -110,47 +111,49 @@ export function PaymentScreen({
               disabled={isSubmitting}
             />
 
-            <aside className="pt-1">
-              <p className="mb-4 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                Vorschlaege
-              </p>
-              <div className="mb-8 grid grid-cols-3 gap-3">
+            <Card className="gap-0 py-0 shadow-sm">
+              <CardContent className="p-5">
+              <div className="mb-4">
+                <p className="text-base font-semibold text-foreground">Schnellbeträge</p>
+                <p className="mt-1 text-sm text-muted-foreground">Betrag auswählen oder passend übernehmen.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5">
                 {cashSuggestions.map((suggestion) => (
-                  <button
+                  <Button
                     key={suggestion.label}
-                    className="flex h-16 items-center justify-center rounded-md bg-white px-4 text-base font-black text-indigo-900 shadow-sm ring-1 ring-slate-200 transition active:scale-[0.985] active:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    variant="outline"
+                    className="h-14 text-base font-semibold tabular-nums active:scale-[0.975]"
                     type="button"
                     disabled={isSubmitting}
                     onClick={() => setReceivedAmount(suggestion.valueInRappen)}
                   >
                     {suggestion.label}
-                  </button>
+                  </Button>
                 ))}
-                <button
-                  className="col-span-2 flex h-16 items-center justify-center rounded-md bg-indigo-50 px-4 text-base font-black text-indigo-900 shadow-sm ring-1 ring-indigo-100 transition active:scale-[0.985] active:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                <Button
+                  variant="secondary"
+                  className="h-14 text-base font-semibold active:scale-[0.975]"
                   type="button"
                   disabled={isSubmitting}
                   onClick={() => setReceivedAmount(total)}
                 >
                   Passend
-                </button>
+                </Button>
               </div>
 
-              <div className="border-t border-slate-400 pt-6">
-                <div className="mb-5 flex items-center justify-between gap-4">
-                  <p className="text-lg font-black text-slate-500">Total</p>
-                  <p className="text-lg font-black text-slate-950">
+              <div className="mt-5 border-t pt-5">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <p className="text-sm font-medium text-muted-foreground">Total</p>
+                  <p className="text-lg font-semibold tabular-nums text-foreground">
                     {formatChf(total)}
                   </p>
                 </div>
-                <div className="mb-8 flex items-center justify-between gap-4">
-                  <p className="text-2xl font-black text-slate-950">
-                    Wechselgeld
-                  </p>
+                <div className="mb-5 flex items-center justify-between gap-4 rounded-lg bg-muted/60 px-4 py-4">
+                  <p className="text-base font-semibold text-foreground">Wechselgeld</p>
                   <p
                     className={cn(
-                      "text-3xl font-black",
-                      changeAmount > 0 ? "text-slate-950" : "text-slate-300",
+                      "text-2xl font-semibold tabular-nums",
+                      changeAmount > 0 ? "text-foreground" : "text-muted-foreground",
                     )}
                   >
                     {formatChf(changeAmount)}
@@ -158,7 +161,7 @@ export function PaymentScreen({
                 </div>
 
                 <Button
-                  className="h-16 w-full rounded-md bg-indigo-500 text-lg font-black text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600 disabled:bg-indigo-300"
+                  className="h-12 w-full bg-slate-950 text-base font-semibold text-white hover:bg-slate-800"
                   disabled={!canCompleteCashPayment}
                   onClick={() =>
                     onSelectMethod({
@@ -171,7 +174,8 @@ export function PaymentScreen({
                   Abschliessen
                 </Button>
               </div>
-            </aside>
+              </CardContent>
+            </Card>
           </div>
         </section>
       </main>
@@ -247,13 +251,13 @@ function PaymentMethodCard({
 }: PaymentMethodCardProps) {
   return (
     <button
-      className="group text-left transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-60"
+      className="group text-left transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-60 shadow-4xl"
       disabled={disabled}
       onClick={() => onSelectMethod(method)}
     >
       <Card
         className={cn(
-          "h-64 rounded-md py-0 shadow-xl shadow-slate-900/10 ring-1 transition group-hover:-translate-y-0.5",
+          "h-64 rounded-md py-0 shadow-4xl shadow-slate-900/10 ring-1 transition group-hover:-translate-y-0.5",
           dark
             ? "border-slate-950 bg-gradient-to-br from-[#191a1f] to-[#111827] text-white ring-slate-950"
             : "border-slate-200 bg-white text-slate-950 ring-slate-200",

@@ -53,7 +53,7 @@ export function PosBottomNav({
   ];
 
   return (
-    <footer className="grid h-16 shrink-0 grid-cols-3 border-t border-slate-200 bg-white">
+    <footer className="grid h-16 shrink-0 grid-cols-3 border-t bg-background px-2 py-1.5">
       {navItems.map(({ label, icon: Icon, screen, activeWhen }) => {
         const active = activeWhen.includes(activeScreen);
 
@@ -62,12 +62,15 @@ export function PosBottomNav({
             key={label}
             variant="ghost"
             className={cn(
-              "flex h-full flex-col items-center justify-center gap-0.5 rounded-none text-xs font-black uppercase transition active:bg-slate-100",
-              active ? "text-indigo-800" : "text-slate-500",
+              "flex h-full flex-col items-center justify-center gap-1 rounded-lg text-xs font-medium transition",
+              active
+                ? "bg-slate-950 text-white shadow-sm hover:bg-slate-900 hover:text-white"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
+            aria-current={active ? "page" : undefined}
             onClick={() => onNavigate(screen)}
           >
-            <Icon className="size-5" />
+            <Icon className="size-5" strokeWidth={active ? 2.25 : 1.75} />
             {label}
           </Button>
         );

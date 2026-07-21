@@ -55,3 +55,7 @@
 - [x] Variant for products adding / editing is completely missing
     - add in owner staff module for catalog and products ability to give variantgroups with items to products / categories
     - products take from parent category if assigned, if set on product only product has it
+
+
+- [] staff app
+    - tablemanagement > if a location is counter do not render table management, instead display not available for this location because counter selling is enabled for this location

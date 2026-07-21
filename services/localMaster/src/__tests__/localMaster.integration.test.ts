@@ -616,6 +616,39 @@ test("day close request_id replay returns the same saved close", async () => {
   assert.deepEqual(second, first);
 });
 
+test("day close rejects a business-day window without completed orders", async () => {
+  const businessDate = "2099-12-30";
+  const beforeJobs = (await getPrintJobs()).length;
+  const beforeOutbox = readState<Array<{ event_type: string; aggregate_id: string }>>("localOutbox", []);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/day-close",
+    payload: {
+      request: {
+        request_id: "day_close_without_orders",
+        business_date: businessDate,
+        business_day_cutover_time: "04:00",
+        counted_cash: 0,
+        terminal_id: "terminal-empty-day-close"
+      }
+    }
+  });
+  const afterPreview = await dayClosePreview(businessDate);
+  const afterOutbox = readState<Array<{ event_type: string; aggregate_id: string }>>("localOutbox", []);
+
+  assert.equal(response.statusCode, 409, response.body);
+  assert.equal(
+    response.json<{ error: string }>().error,
+    "No completed orders exist in the selected business-day window."
+  );
+  assert.equal(afterPreview.existing_close, null);
+  assert.equal((await getPrintJobs()).length, beforeJobs);
+  assert.equal(
+    afterOutbox.filter((entry) => entry.event_type === "DAY_CLOSE_SAVED").length,
+    beforeOutbox.filter((entry) => entry.event_type === "DAY_CLOSE_SAVED").length
+  );
+});
+
 test("day close preview ignores legacy payments without ledger and counts lifecycle completed ledger payments", async () => {
   const businessDate = await postJson<{ business_date: string }>(
     "/api/business-date/current",

@@ -18,6 +18,10 @@ import type {
   SavedDayClose
 } from "../types.js";
 
+class DayCloseConflictError extends Error {
+  readonly statusCode = 409;
+}
+
 export function getCurrentBusinessDate(request: CurrentBusinessDateRequest): CurrentBusinessDate {
   return {
     business_date: currentBusinessDate(request.business_day_cutover_time)
@@ -80,6 +84,13 @@ function saveDayCloseUnchecked(request: SaveDayCloseRequest): SavedDayClose {
     business_date: request.business_date,
     business_day_cutover_time: request.business_day_cutover_time
   });
+
+  if (preview.order_count === 0) {
+    throw new DayCloseConflictError(
+      "No completed orders exist in the selected business-day window."
+    );
+  }
+
   const now = Date.now();
   const saved: StoredDayClose = {
     business_date: preview.business_date,

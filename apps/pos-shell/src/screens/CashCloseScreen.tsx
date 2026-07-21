@@ -2,6 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@easytable/ui/components/button";
+import { Badge } from "@easytable/ui/components/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@easytable/ui/components/card";
+import { Input } from "@easytable/ui/components/input";
+import { Label } from "@easytable/ui/components/label";
 import { cn } from "@easytable/ui/lib/utils";
 
 import { TouchNumberPad } from "../components/TouchNumberPad";
@@ -31,6 +35,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   const cashDifference = countedCash - (preview?.expected_cash ?? 0);
+  const hasCompletedOrders = (preview?.order_count ?? 0) > 0;
   const formattedWindow = useMemo(() => {
     if (!preview) {
       return "";
@@ -121,7 +126,7 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
   }, [businessDate, cutoverTime]);
 
   async function handleSaveDayClose() {
-    if (!businessDate || !cutoverTime || isSaving) {
+    if (!businessDate || !cutoverTime || isSaving || !hasCompletedOrders) {
       return;
     }
 
@@ -150,82 +155,79 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
   }
 
   return (
-    <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-[#f7f8fc] text-slate-950">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-300 bg-white px-5">
+    <main className="flex h-svh touch-manipulation flex-col overflow-hidden bg-muted/30 text-foreground">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="size-10 rounded-md text-slate-500"
-            aria-label="Zurueck"
+            className="size-10 text-muted-foreground"
+            aria-label="Zurück"
             onClick={onBack}
           >
             <ArrowLeftIcon className="size-5" />
           </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-black text-slate-950">
+            <h1 className="truncate text-lg font-semibold text-foreground">
               Kassenabschluss
             </h1>
-            <p className="truncate text-xs font-black uppercase text-slate-400">
-              {formattedWindow || "Geschaeftstag wird geladen"}
+            <p className="truncate text-xs text-muted-foreground">
+              {formattedWindow || "Geschäftstag wird geladen"}
             </p>
           </div>
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
-        <div className="mb-6 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-2 rounded-md bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <span className="text-xs font-black uppercase text-slate-400">
+      <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 lg:p-6">
+        <div className="mx-auto mb-5 grid max-w-7xl grid-cols-1 gap-3 sm:grid-cols-2">
+          <Label className="flex h-auto flex-col items-start gap-2 rounded-xl bg-card p-4 shadow-sm ring-1 ring-foreground/10">
+            <span className="text-sm font-medium text-foreground">
               Datum
             </span>
-            <input
-              className="h-12 rounded-md border border-slate-200 px-3 text-base font-black text-slate-950 outline-none focus:border-slate-400"
+            <Input
+              className="h-11 font-medium"
               type="date"
               value={businessDate}
               onChange={(event) => setBusinessDate(event.target.value)}
             />
-          </label>
-          <label className="flex flex-col gap-2 rounded-md bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <span className="text-xs font-black uppercase text-slate-400">
+          </Label>
+          <Label className="flex h-auto flex-col items-start gap-2 rounded-xl bg-card p-4 shadow-sm ring-1 ring-foreground/10">
+            <span className="text-sm font-medium text-foreground">
               Schichtende / Tageswechsel
             </span>
-            <input
-              className="h-12 rounded-md border border-slate-200 px-3 text-base font-black text-slate-950 outline-none focus:border-slate-400"
+            <Input
+              className="h-11 font-medium"
               type="time"
               value={cutoverTime}
               onChange={(event) => setCutoverTime(event.target.value)}
             />
-          </label>
+          </Label>
         </div>
 
-        <div className="grid max-w-7xl grid-cols-1 items-center mx-auto xl:grid-cols-[minmax(22rem,29rem)_minmax(22rem,28rem)_minmax(20rem,1fr)]">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(22rem,28rem)_minmax(22rem,27rem)_minmax(20rem,1fr)]">
           <TouchNumberPad
             valueInRappen={countedCash}
             onChangeValueInRappen={setCountedCash}
-            label="Gezaehltes Bargeld"
+            label="Gezähltes Bargeld"
             disabled={isSaving}
           />
 
           <div className="grid gap-5">
-            <section className="rounded-md bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200">
+            <Card className="gap-0 py-0 shadow-sm">
+              <CardHeader className="border-b py-5">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-black uppercase text-slate-400">
-                    Systemerwartung
-                  </p>
-                  <p className="text-sm font-bold text-slate-500">
+                  <CardTitle>Systemerwartung</CardTitle>
+                  <CardDescription>
                     {isLoadingPreview
                       ? "Wird berechnet"
                       : "Abgeschlossene Zahlungen"}
-                  </p>
+                  </CardDescription>
                 </div>
                 {preview?.existing_close ? (
-                  <span className="rounded-md bg-amber-50 px-3 py-2 text-xs font-black uppercase text-amber-700">
-                    Bereits gespeichert
-                  </span>
+                  <Badge variant="secondary">Bereits gespeichert</Badge>
                 ) : null}
-              </div>
+              </div></CardHeader><CardContent className="py-5">
 
               <div className="grid gap-3">
                 <SummaryRow label="Bargeld" value={preview?.expected_cash ?? 0} />
@@ -240,30 +242,31 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
                 />
               </div>
 
-              <div className="mt-5 grid gap-3 border-t border-slate-200 pt-5 text-sm font-bold text-slate-500 sm:grid-cols-2">
+              <div className="mt-5 grid gap-3 border-t pt-5 text-sm text-muted-foreground sm:grid-cols-2">
                 <p>
                   Bestellungen{" "}
-                  <span className="font-black text-slate-950">
+                  <span className="font-semibold text-foreground">
                     {preview?.order_count ?? 0}
                   </span>
                 </p>
                 <p>
                   Produkte{" "}
-                  <span className="font-black text-slate-950">
+                  <span className="font-semibold text-foreground">
                     {preview?.item_count ?? 0}
                   </span>
                 </p>
               </div>
-            </section>
+              </CardContent>
+            </Card>
 
-            <section className="rounded-md bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200">
+            <Card className="gap-0 py-0 shadow-sm"><CardContent className="p-5">
               <div className="mb-6 flex items-center justify-between gap-4">
-                <p className="text-xl font-black text-slate-950">Differenz</p>
+                <p className="text-base font-semibold text-foreground">Differenz</p>
                 <p
                   className={cn(
-                    "text-3xl font-black",
+                    "text-3xl font-semibold tabular-nums",
                     cashDifference === 0
-                      ? "text-slate-300"
+                      ? "text-muted-foreground"
                       : cashDifference > 0
                         ? "text-emerald-700"
                         : "text-rose-700",
@@ -274,62 +277,62 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
               </div>
 
               <Button
-                className="h-14 w-full rounded-md bg-slate-950 text-base font-black uppercase text-white shadow-lg shadow-slate-900/10 hover:bg-slate-900"
-                disabled={isSaving || isLoadingPreview || !preview}
+                className="h-12 w-full bg-slate-950 text-base font-semibold text-white hover:bg-slate-800"
+                disabled={isSaving || isLoadingPreview || !preview || !hasCompletedOrders}
                 onClick={() => void handleSaveDayClose()}
               >
                 <SaveIcon className="mr-2 size-5" />
                 Abschluss speichern
               </Button>
-
-            </section>
+              {preview && !hasCompletedOrders ? (
+                <p className="mt-3 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+                  Keine abgeschlossenen Bestellungen im gewählten Zeitraum.
+                </p>
+              ) : null}
+            </CardContent></Card>
           </div>
 
-          <section className="rounded-md bg-white p-5 shadow-md shadow-slate-200/70 ring-1 ring-slate-200 xl:max-h-[calc(100svh-11rem)] overflow-y-auto">
+          <Card className="gap-0 overflow-y-auto py-0 shadow-sm xl:max-h-[calc(100svh-11rem)]"><CardContent className="p-5">
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase text-slate-400">
-                  Verkaufte Produkte
-                </p>
-                <p className="text-sm font-bold text-slate-500">
-                  Mengen und Umsatz
-                </p>
+                <p className="text-base font-semibold text-foreground">Verkaufte Produkte</p>
+                <p className="text-sm text-muted-foreground">Mengen und Umsatz</p>
               </div>
-              <span className="text-xs font-black uppercase text-slate-400">
+              <Badge variant="secondary">
                 {preview?.product_sales.length ?? 0} Positionen
-              </span>
+              </Badge>
             </div>
 
             {preview?.product_sales.length ? (
-              <div className="max-h-80 overflow-y-auto rounded-md border border-slate-200 xl:max-h-[calc(100svh-18rem)]">
+              <div className="max-h-80 overflow-y-auto rounded-lg border xl:max-h-[calc(100svh-18rem)]">
                 {preview.product_sales.map((sale) => (
                   <div
                     key={`${sale.product_id}:${sale.product_name}`}
-                    className="grid grid-cols-[minmax(0,1fr)_4rem_6rem] items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
+                    className="grid grid-cols-[minmax(0,1fr)_4rem_6rem] items-center gap-3 border-b px-4 py-3 last:border-b-0"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-slate-950">
+                      <p className="truncate text-sm font-semibold text-foreground">
                         {sale.product_name}
                       </p>
-                      <p className="truncate text-xs font-bold uppercase text-slate-400">
+                      <p className="truncate text-xs text-muted-foreground">
                         {sale.product_category}
                       </p>
                     </div>
-                    <p className="text-right text-sm font-black text-slate-500">
+                    <p className="text-right text-sm font-medium text-muted-foreground">
                       {sale.quantity}x
                     </p>
-                    <p className="text-right text-sm font-black text-slate-950">
+                    <p className="text-right text-sm font-semibold tabular-nums text-foreground">
                       {formatChf(sale.total)}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="rounded-md bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
-                Keine verkauften Produkte im gewaehlten Zeitraum.
+              <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+                Keine verkauften Produkte im gewählten Zeitraum.
               </p>
             )}
-          </section>
+          </CardContent></Card>
         </div>
       </section>
     </main>
@@ -344,18 +347,18 @@ type SummaryRowProps = {
 
 function SummaryRow({ label, value, strong = false }: SummaryRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md bg-slate-50 px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/60 px-4 py-3">
       <p
         className={cn(
-          "font-black",
-          strong ? "text-lg text-slate-950" : "text-base text-slate-500",
+          "font-medium",
+          strong ? "text-base text-foreground" : "text-sm text-muted-foreground",
         )}
       >
         {label}
       </p>
       <p
         className={cn(
-          "font-black text-slate-950",
+          "font-semibold tabular-nums text-foreground",
           strong ? "text-xl" : "text-base",
         )}
       >

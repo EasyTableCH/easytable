@@ -1,5 +1,7 @@
 import { DeleteIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@easytable/ui/components/button";
+import { Card, CardContent } from "@easytable/ui/components/card";
 import { cn } from "@easytable/ui/lib/utils";
 
 type TouchNumberPadProps = {
@@ -89,43 +91,46 @@ export function TouchNumberPad({
 
   return (
     <section className={cn("w-full", className)}>
-      <div className="mb-8 rounded-md bg-white px-6 py-7 shadow-xl shadow-slate-200/70 ring-1 ring-slate-100">
-        {label ? (
-          <p className="mb-3 text-xs font-black uppercase text-slate-400">
-            {label}
-          </p>
-        ) : null}
-        <div className="flex min-h-12 items-end justify-between gap-4">
-          <p className="text-5xl font-black leading-none text-slate-950">
-            {displayInputText(inputText)}
-          </p>
-          <p className="pb-1 text-xs font-black uppercase tracking-[0.35em] text-slate-300">
-            {currencyLabel}
-          </p>
-        </div>
-      </div>
+      <Card className="mb-4 gap-0 py-0 shadow-sm">
+        <CardContent className="p-5">
+          {label ? (
+            <p className="mb-2 text-sm font-medium text-muted-foreground">{label}</p>
+          ) : null}
+          <div className="flex min-h-12 items-end justify-between gap-4">
+            <p className="min-w-0 truncate text-4xl font-semibold leading-none tabular-nums text-foreground">
+              {displayInputText(inputText)}
+            </p>
+            <p className="shrink-0 pb-0.5 text-xs font-medium text-muted-foreground">
+              {currencyLabel}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2.5">
         {keypadItems.map((key) => (
-          <button
+          <Button
             key={key}
-            className="flex h-20 items-center justify-center rounded-md bg-white text-3xl font-black text-slate-950 shadow-md shadow-slate-200/70 ring-1 ring-slate-200 transition active:scale-[0.985] active:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            variant="outline"
+            className="h-16 bg-background text-2xl font-semibold tabular-nums shadow-sm active:scale-[0.975] active:bg-muted"
             type="button"
             disabled={disabled}
+            aria-label={key === "." ? "Dezimaltrennzeichen" : key}
             onClick={() => handleKeyPress(key)}
           >
             {key}
-          </button>
+          </Button>
         ))}
-        <button
-          className="flex h-20 items-center justify-center rounded-md bg-white text-slate-400 shadow-md shadow-slate-200/70 ring-1 ring-slate-200 transition active:scale-[0.985] active:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        <Button
+          variant="secondary"
+          className="h-16 text-muted-foreground shadow-sm active:scale-[0.975]"
           type="button"
           aria-label="Letzte Ziffer entfernen"
           disabled={disabled}
           onClick={handleBackspace}
         >
-          <DeleteIcon className="size-7" />
-        </button>
+          <DeleteIcon className="size-6" />
+        </Button>
       </div>
     </section>
   );

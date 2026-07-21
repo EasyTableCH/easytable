@@ -87,10 +87,7 @@ export function OwnerAnalyticsPage() {
       <section className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Owner Analytics</p>
-          <h2 className="text-2xl font-semibold tracking-normal">Umsaetze, Produkte und Stornos</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Quelle: LocalMaster Ledger · Cutover {businessDayCutoverTime} · {connectionMode}
-          </p>
+          <h2 className="text-2xl font-semibold tracking-normal">Umsätze, Produkte und Stornos</h2>
         </div>
         <Button disabled={isLoading} onClick={() => void refresh()} type="button" variant="outline">
           <RefreshCw data-icon="inline-start" />

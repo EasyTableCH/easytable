@@ -111,8 +111,23 @@ export async function registerBusinessRoutes(app: FastifyInstance) {
   app.post<{ Body: PosRequestBody<SaveDayCloseRequest> }>(
     "/api/day-close",
     { schema: saveDayCloseSchema },
-    async (request, reply) => reply.code(201).send(saveDayClose(request.body.request))
+    async (request, reply) => {
+      try {
+        const saved = saveDayClose(request.body.request);
+        return reply.code(201).send(saved);
+      } catch (error) {
+        if (hasStatusCode(error, 409)) {
+          return reply.code(409).send({ error: error.message });
+        }
+
+        throw error;
+      }
+    }
   );
+}
+
+function hasStatusCode(error: unknown, statusCode: number): error is Error & { statusCode: number } {
+  return error instanceof Error && "statusCode" in error && error.statusCode === statusCode;
 }
 
 function broadcastDeviceConfigUpdated(action: string, entity: unknown) {

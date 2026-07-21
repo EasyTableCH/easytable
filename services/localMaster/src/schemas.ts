@@ -164,6 +164,14 @@ export const saveDayCloseSchema = {
     201: {
       type: "object",
       additionalProperties: true
+    },
+    409: {
+      type: "object",
+      required: ["error"],
+      properties: {
+        error: { type: "string" }
+      },
+      additionalProperties: false
     }
   }
 } satisfies FastifySchema;

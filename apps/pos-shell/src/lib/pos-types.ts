@@ -184,10 +184,7 @@ export type ProductVariantGroup = {
   items: ProductVariantGroupItem[];
 };
 
-export type ProductCard = PosProduct & {
-  tone: string;
-  accent: string;
-};
+export type ProductCard = PosProduct;
 
 export type BasketLineVariant = {
   variant_group_id: string;

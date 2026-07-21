@@ -32,13 +32,30 @@ export function BasketPanel({
   onStartPayment,
 }: BasketPanelProps) {
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+    <aside className="flex min-h-0 flex-col overflow-hidden border-l bg-background">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Warenkorb</p>
+          <p className="text-xs text-muted-foreground">
+            {lines.length === 0 ? "Keine Positionen" : `${lines.length} ${lines.length === 1 ? "Position" : "Positionen"}`}
+          </p>
+        </div>
+        {lines.length > 0 ? (
+          <span className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            {lines.reduce((quantity, line) => quantity + line.quantity, 0)} Artikel
+          </span>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
         {lines.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <ReceiptTextIcon className="mb-4 size-14 text-slate-300" />
-            <p className="text-base font-black text-slate-400">
-              Warenkorb leer
+            <span className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted text-slate-950 ring-1 ring-foreground/5">
+              <ReceiptTextIcon className="size-7" strokeWidth={1.75} />
+            </span>
+            <p className="text-base font-semibold text-foreground">Warenkorb leer</p>
+            <p className="mt-1 max-w-48 text-sm leading-5 text-muted-foreground">
+              Produkte antippen, um sie hier hinzuzufügen.
             </p>
           </div>
         ) : (
@@ -46,37 +63,42 @@ export function BasketPanel({
             {lines.map((line) => (
               <Card
                 key={line.id}
-                className="rounded-md bg-slate-50 py-0 ring-slate-200"
+                className="gap-0 rounded-xl bg-card py-0 shadow-sm"
               >
-                <CardContent className="p-3">
+                <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-slate-950">
-                        {line.quantity}x {line.product_name}
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        <span className="mr-1 text-muted-foreground">{line.quantity}×</span>
+                        {line.product_name}
                       </p>
                       {line.variants.length > 0 ? (
-                        <p className="mt-1 truncate text-xs font-bold text-slate-500">
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
                           {line.variants
                             .map((variant) => variant.variant_item_name)
                             .join(", ")}
                         </p>
                       ) : null}
                     </div>
-                    <p className="shrink-0 text-sm font-black text-slate-950">
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                       {formatChf(line.line_total)}
                     </p>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
-                      className="h-10 rounded-md bg-white text-xs font-black uppercase text-slate-600 transition active:scale-[0.98]"
+                      size="icon"
+                      className="h-11 w-full bg-background text-muted-foreground"
+                      aria-label={`${line.product_name} um eins reduzieren`}
                       onClick={() => onDecreaseLine(line.id)}
                     >
                       <MinusIcon className="size-4" />
                     </Button>
                     <Button
                       variant="destructive"
-                      className="h-10 rounded-md border border-red-100 bg-red-50 text-xs font-black uppercase text-red-700 transition active:scale-[0.98] hover:bg-red-100"
+                      size="icon"
+                      className="h-11 w-full"
+                      aria-label={`${line.product_name} entfernen`}
                       onClick={() => onRemoveLine(line.id)}
                     >
                       <Trash2Icon className="size-4" />
@@ -88,17 +110,15 @@ export function BasketPanel({
           </div>
         )}
       </div>
-      <div className="flex h-12 shrink-0 items-center justify-between border-t border-slate-200 px-4 text-sm font-black">
-        <span>Total</span>
-        <span>{formatChf(total)}</span>
+      <div className="flex h-16 shrink-0 items-center justify-between border-t bg-muted/20 px-4">
+        <span className="text-sm font-medium text-muted-foreground">Total</span>
+        <span className="text-xl font-semibold tabular-nums text-foreground">{formatChf(total)}</span>
       </div>
-      <div className={cn("grid h-18 shrink-0 border-t border-slate-200", showBookAction ? "grid-cols-2" : "grid-cols-1")}>
+      <div className={cn("grid shrink-0 gap-3 border-t bg-background p-4", showBookAction ? "grid-cols-2" : "grid-cols-1")}>
         {showBookAction ? (
           <Button
-            className={cn(
-              "h-full rounded-none bg-amber-300 text-base font-black uppercase text-amber-900 transition hover:bg-amber-300 active:bg-amber-400",
-              "disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400",
-            )}
+            variant="outline"
+            className="h-12 text-base font-semibold"
             disabled={lines.length === 0 || isSubmitting}
             onClick={onCreateOrder}
           >
@@ -106,10 +126,7 @@ export function BasketPanel({
           </Button>
         ) : null}
         <Button
-          className={cn(
-            "h-full rounded-none bg-emerald-300 text-base font-black uppercase text-emerald-900 transition hover:bg-emerald-300 active:bg-emerald-400",
-            "disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400",
-          )}
+          className="h-12 bg-slate-950 text-base font-semibold text-white hover:bg-slate-800"
           disabled={lines.length === 0 || isSubmitting}
           onClick={onStartPayment}
         >
