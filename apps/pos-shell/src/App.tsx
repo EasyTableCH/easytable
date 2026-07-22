@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { loadPosSettings } from "./lib/local-master-client";
-import type { LocationServiceMode, TableContext } from "./lib/pos-types";
+import { clearStoredPosSession, getStoredTerminalConfig, loadPosSettings, loadStoredPosSession } from "./lib/local-master-client";
+import type { LocalPosSession, LocationServiceMode, TableContext } from "./lib/pos-types";
 import { CashRegisterScreen } from "./screens/CashRegisterScreen";
 import { MoreScreen } from "./screens/MoreScreen";
 import { TablePlanScreen } from "./screens/TablePlanScreen";
+import { LocalPosLogin } from "./screens/LocalPosLogin";
 
 export type PosScreen = "tables" | "cash" | "more" | "logout";
 
@@ -14,6 +15,12 @@ function App() {
   const [activeScreen, setActiveScreen] = useState<PosScreen | null>(null);
   const [selectedTableContext, setSelectedTableContext] =
     useState<TableContext | null>(null);
+  const [posSession, setPosSession] = useState<LocalPosSession | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    void loadStoredPosSession().then(setPosSession).finally(() => setSessionChecked(true));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,7 +80,7 @@ function App() {
     setActiveScreen(screen);
   }
 
-  if (!activeScreen) {
+  if (!activeScreen || !sessionChecked) {
     return (
       <main className="flex h-svh touch-manipulation items-center justify-center bg-[#f6f7fb] p-6 text-slate-950">
         <p className="text-sm font-black uppercase text-slate-400">
@@ -81,6 +88,10 @@ function App() {
         </p>
       </main>
     );
+  }
+
+  if (getStoredTerminalConfig() && !posSession) {
+    return <LocalPosLogin onAuthenticated={setPosSession} />;
   }
 
   if (activeScreen === "tables") {
@@ -123,7 +134,7 @@ function App() {
         </p>
         <button
           className="h-12 rounded-md bg-slate-950 px-5 text-sm font-black uppercase text-white transition active:scale-[0.98]"
-          onClick={() => handleNavigate("tables")}
+          onClick={() => { clearStoredPosSession(); setPosSession(null); handleNavigate("tables"); }}
         >
           Zur Kasse
         </button>

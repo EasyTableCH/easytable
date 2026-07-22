@@ -240,6 +240,10 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
                   value={preview?.expected_total ?? 0}
                   strong
                 />
+                <SummaryRow
+                  label={`Offeriert (${preview?.complimentary_quantity ?? 0}x)`}
+                  value={preview?.complimentary_value ?? 0}
+                />
               </div>
 
               <div className="mt-5 grid gap-3 border-t pt-5 text-sm text-muted-foreground sm:grid-cols-2">
@@ -331,6 +335,30 @@ export function CashCloseScreen({ onBack }: CashCloseScreenProps) {
               <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
                 Keine verkauften Produkte im gewählten Zeitraum.
               </p>
+            )}
+
+            <div className="mb-4 mt-6 flex items-end justify-between gap-4 border-t pt-5">
+              <div>
+                <p className="text-base font-semibold text-foreground">Offerierte Produkte</p>
+                <p className="text-sm text-muted-foreground">Mengen und Listenwert</p>
+              </div>
+              <Badge variant="secondary">{preview?.complimentary_sales.length ?? 0} Positionen</Badge>
+            </div>
+            {preview?.complimentary_sales.length ? (
+              <div className="max-h-64 overflow-y-auto rounded-lg border">
+                {preview.complimentary_sales.map((sale) => (
+                  <div key={`complimentary:${sale.product_id}:${sale.product_name}`} className="grid grid-cols-[minmax(0,1fr)_4rem_6rem] items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{sale.product_name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{sale.product_category}</p>
+                    </div>
+                    <p className="text-right text-sm font-medium text-muted-foreground">{sale.quantity}x</p>
+                    <p className="text-right text-sm font-semibold tabular-nums text-foreground">{formatChf(sale.total)}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">Keine offerierten Produkte im gewählten Zeitraum.</p>
             )}
           </CardContent></Card>
         </div>

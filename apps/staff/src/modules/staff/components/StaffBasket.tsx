@@ -1,4 +1,4 @@
-import { MinusIcon, ReceiptTextIcon, Trash2Icon } from "lucide-react";
+import { GiftIcon, MinusIcon, ReceiptTextIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
 import { cn } from "@easytable/ui/lib/utils";
@@ -13,6 +13,8 @@ type StaffBasketProps = {
   compact?: boolean;
   onDecreaseLine: (lineId: string) => void;
   onRemoveLine: (lineId: string) => void;
+  onOfferLine: (lineId: string) => void;
+  onUndoOfferLine: (lineId: string) => void;
   onCreateOrder: () => void;
 };
 
@@ -23,6 +25,8 @@ export function StaffBasket({
   compact = false,
   onDecreaseLine,
   onRemoveLine,
+  onOfferLine,
+  onUndoOfferLine,
   onCreateOrder,
 }: StaffBasketProps) {
   return (
@@ -48,16 +52,31 @@ export function StaffBasket({
                           {line.variants.map((variant) => variant.variant_item_name).join(", ")}
                         </p>
                       ) : null}
+                      {line.complimentary_quantity > 0 ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700">
+                          <GiftIcon className="size-3.5 shrink-0" />
+                          <span className="min-w-32 flex-1">{line.quantity - line.complimentary_quantity} berechnet · {line.complimentary_quantity} offeriert ({formatChf(line.complimentary_value)})</span>
+                          <Button className="h-7 shrink-0 px-2 text-xs" onClick={() => onUndoOfferLine(line.id)} size="sm" variant="ghost"><RotateCcwIcon className="size-3.5" /> Zurück</Button>
+                        </div>
+                      ) : null}
                     </div>
                     <p className="shrink-0 text-sm font-black text-slate-950">{formatChf(line.line_total)}</p>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
                       className="h-10 rounded-md bg-white text-xs font-black uppercase text-slate-600 transition active:scale-[0.98]"
                       onClick={() => onDecreaseLine(line.id)}
                     >
                       <MinusIcon className="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-10 rounded-md border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      disabled={line.complimentary_quantity >= line.quantity}
+                      onClick={() => onOfferLine(line.id)}
+                    >
+                      <GiftIcon className="size-4" />
                     </Button>
                     <Button
                       variant="destructive"
@@ -73,8 +92,8 @@ export function StaffBasket({
           </div>
         )}
       </div>
-      <div className="flex h-12 shrink-0 items-center justify-between border-t border-slate-200 px-4 text-sm font-black">
-        <span>Total</span>
+      <div className="flex h-14 shrink-0 items-center justify-between border-t border-slate-200 px-4 text-sm font-black">
+        <div><span>Total</span><p className="text-xs text-emerald-700">Offeriert {formatChf(lines.reduce((sum, line) => sum + line.complimentary_value, 0))}</p></div>
         <span>{formatChf(total)}</span>
       </div>
       <Button

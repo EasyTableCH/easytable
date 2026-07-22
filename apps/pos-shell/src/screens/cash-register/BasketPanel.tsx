@@ -1,6 +1,11 @@
-import { MinusIcon, ReceiptTextIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, GiftIcon, MinusIcon, ReceiptTextIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@easytable/ui/components/collapsible";
 import { cn } from "@easytable/ui/lib/utils";
 
 import { formatChf } from "../../lib/money";
@@ -15,6 +20,8 @@ type BasketPanelProps = {
   showBookAction?: boolean;
   onDecreaseLine: (lineId: string) => void;
   onRemoveLine: (lineId: string) => void;
+  onOfferLine: (lineId: string) => void;
+  onUndoOfferLine: (lineId: string) => void;
   onCreateOrder: () => void;
   onStartPayment: () => void;
 };
@@ -28,6 +35,8 @@ export function BasketPanel({
   showBookAction = true,
   onDecreaseLine,
   onRemoveLine,
+  onOfferLine,
+  onUndoOfferLine,
   onCreateOrder,
   onStartPayment,
 }: BasketPanelProps) {
@@ -67,7 +76,7 @@ export function BasketPanel({
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">
                         <span className="mr-1 text-muted-foreground">{line.quantity}×</span>
                         {line.product_name}
@@ -84,7 +93,37 @@ export function BasketPanel({
                       {formatChf(line.line_total)}
                     </p>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  {line.complimentary_quantity > 0 ? (
+                    <Collapsible className="mt-2 w-full rounded-md bg-fuchsia-50 px-4 py-3 text-fuchsia-700">
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="group flex w-full items-center justify-between gap-2 text-left text-sm font-semibold"
+                          aria-label={`Offerierte Menge für ${line.product_name} anzeigen`}
+                        >
+                          <span>
+                            <strong>{line.quantity - line.complimentary_quantity}</strong> verr. |{" "}
+                            <strong>{line.complimentary_quantity}</strong> off.
+                          </span>
+                          <ChevronDownIcon
+                            aria-hidden="true"
+                            className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180"
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-1.5">
+                        <Button
+                          className="h-12 w-full px-2 text-sm"
+                          onClick={() => onUndoOfferLine(line.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <RotateCcwIcon /> Zurück
+                        </Button>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ) : null}
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
                       size="icon"
@@ -93,6 +132,15 @@ export function BasketPanel({
                       onClick={() => onDecreaseLine(line.id)}
                     >
                       <MinusIcon className="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100"
+                      disabled={line.complimentary_quantity >= line.quantity}
+                      aria-label={`${line.product_name} einmal offerieren`}
+                      onClick={() => onOfferLine(line.id)}
+                    >
+                      <GiftIcon className="size-4" />
                     </Button>
                     <Button
                       variant="destructive"
@@ -111,7 +159,7 @@ export function BasketPanel({
         )}
       </div>
       <div className="flex h-16 shrink-0 items-center justify-between border-t bg-muted/20 px-4">
-        <span className="text-sm font-medium text-muted-foreground">Total</span>
+        <div><p className="text-sm font-medium text-muted-foreground">Total</p><p className="text-xs text-emerald-700">Offeriert {formatChf(lines.reduce((sum, line) => sum + line.complimentary_value, 0))}</p></div>
         <span className="text-xl font-semibold tabular-nums text-foreground">{formatChf(total)}</span>
       </div>
       <div className={cn("grid shrink-0 gap-3 border-t bg-background p-4", showBookAction ? "grid-cols-2" : "grid-cols-1")}>
@@ -130,7 +178,7 @@ export function BasketPanel({
           disabled={lines.length === 0 || isSubmitting}
           onClick={onStartPayment}
         >
-          {payLabel}
+          {total === 0 ? "Gratis abschließen" : payLabel}
         </Button>
       </div>
     </aside>

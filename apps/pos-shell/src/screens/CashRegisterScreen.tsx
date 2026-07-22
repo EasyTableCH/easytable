@@ -10,7 +10,9 @@ import { Card, CardContent } from "@easytable/ui/components/card";
 
 import type { PosScreen } from "../App";
 import {
+  adjustComplimentaryQuantity,
   completeCashPayment,
+  completeComplimentaryOrder,
   reconcilePaymentAttempt,
   createClientRequestId,
   createOrderSnapshot,
@@ -70,6 +72,7 @@ export function CashRegisterScreen({
   const [catalogViewMode, setCatalogViewMode] =
     useState<CatalogViewMode>("grid");
   const [basketLines, setBasketLines] = useState<BasketLine[]>([]);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductCard | null>(
     null,
   );
@@ -173,6 +176,7 @@ export function CashRegisterScreen({
     async function loadOpenTableBasket() {
       if (!tableContext) {
         setBasketLines([]);
+        setOpenOrderId(null);
         return;
       }
 
@@ -184,12 +188,14 @@ export function CashRegisterScreen({
 
         if (isMounted) {
           setBasketLines(openBasket?.lines ?? []);
+          setOpenOrderId(openBasket?.order_id ?? null);
         }
       } catch (error) {
         console.warn("Could not load open table basket.", error);
 
         if (isMounted) {
           setBasketLines([]);
+          setOpenOrderId(null);
           toast.error("Offener Tischauftrag konnte nicht geladen werden.");
         }
       }
@@ -342,7 +348,7 @@ export function CashRegisterScreen({
             ? {
               ...line,
               quantity: line.quantity + 1,
-              line_total: line.unit_total * (line.quantity + 1),
+              line_total: line.line_total + line.unit_total,
             }
             : line,
         );
@@ -364,6 +370,8 @@ export function CashRegisterScreen({
           variants,
           unit_total: unitTotal,
           quantity: 1,
+          complimentary_quantity: 0,
+          complimentary_value: 0,
           line_total: unitTotal,
         },
       ];
@@ -381,19 +389,50 @@ export function CashRegisterScreen({
           return [];
         }
 
-        return [
-          {
-            ...line,
-            quantity: line.quantity - 1,
-            line_total: line.unit_total * (line.quantity - 1),
-          },
-        ];
+        const hasChargedUnit = line.quantity > line.complimentary_quantity;
+        return [{
+          ...line,
+          quantity: line.quantity - 1,
+          complimentary_quantity: hasChargedUnit ? line.complimentary_quantity : line.complimentary_quantity - 1,
+          complimentary_value: hasChargedUnit ? line.complimentary_value : line.complimentary_value - line.unit_total,
+          line_total: hasChargedUnit ? line.line_total - line.unit_total : line.line_total,
+        }];
       }),
     );
   }
 
   function removeBasketLine(lineId: string) {
     setBasketLines((current) => current.filter((line) => line.id !== lineId));
+  }
+
+  function offerBasketLine(lineId: string) {
+    const line = basketLines.find((candidate) => candidate.id === lineId);
+    if (!line || line.complimentary_quantity >= line.quantity) return;
+    const nextQuantity = line.complimentary_quantity + 1;
+    setBasketLines((current) => current.map((candidate) => candidate.id !== lineId ? candidate : {
+      ...candidate,
+      complimentary_quantity: nextQuantity,
+      complimentary_value: nextQuantity * candidate.unit_total,
+      line_total: (candidate.quantity - nextQuantity) * candidate.unit_total,
+    }));
+    if (openOrderId) void adjustComplimentaryQuantity(openOrderId, lineId, nextQuantity).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "Offerieren konnte nicht gespeichert werden.");
+    });
+  }
+
+  function undoOfferBasketLine(lineId: string) {
+    const line = basketLines.find((candidate) => candidate.id === lineId);
+    if (!line || line.complimentary_quantity <= 0) return;
+    const nextQuantity = line.complimentary_quantity - 1;
+    setBasketLines((current) => current.map((candidate) => candidate.id !== lineId ? candidate : {
+      ...candidate,
+      complimentary_quantity: nextQuantity,
+      complimentary_value: nextQuantity * candidate.unit_total,
+      line_total: (candidate.quantity - nextQuantity) * candidate.unit_total,
+    }));
+    if (openOrderId) void adjustComplimentaryQuantity(openOrderId, lineId, nextQuantity).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "Offerieren konnte nicht rückgängig gemacht werden.");
+    });
   }
 
   async function handleCreateOrderSnapshot() {
@@ -439,7 +478,32 @@ export function CashRegisterScreen({
       return;
     }
 
+    if (basketTotal === 0) {
+      void handleComplimentaryComplete();
+      return;
+    }
     setIsPaymentScreenOpen(true);
+  }
+
+  async function handleComplimentaryComplete() {
+    if (basketLines.length === 0 || isCompletingPayment) return;
+    setIsCompletingPayment(true);
+    try {
+      const terminalId = getStoredTerminalConfig()?.terminalId ?? "pos-shell";
+      const result = await completeComplimentaryOrder({
+        request_id: createClientRequestId("complimentary"),
+        lines: basketLines,
+        table_context: tableContext,
+        terminal_id: terminalId,
+      });
+      setBasketLines([]);
+      toast.success(`Auftrag ${result.order_number} wurde gratis abgeschlossen.`);
+      onOrderCreated();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gratisauftrag konnte nicht abgeschlossen werden.");
+    } finally {
+      setIsCompletingPayment(false);
+    }
   }
 
   async function handleCompletePayment(paymentRequest: PaymentRequest) {
@@ -686,6 +750,8 @@ export function CashRegisterScreen({
           showBookAction={!isCounterService}
           onDecreaseLine={decreaseBasketLine}
           onRemoveLine={removeBasketLine}
+          onOfferLine={offerBasketLine}
+          onUndoOfferLine={undoOfferBasketLine}
           onCreateOrder={() => void handleCreateOrderSnapshot()}
           onStartPayment={handleStartPayment}
         />
