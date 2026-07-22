@@ -1,6 +1,11 @@
-import { GiftIcon, MinusIcon, ReceiptTextIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, GiftIcon, MinusIcon, ReceiptTextIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@easytable/ui/components/button";
 import { Card, CardContent } from "@easytable/ui/components/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@easytable/ui/components/collapsible";
 import { cn } from "@easytable/ui/lib/utils";
 
 import { formatChf } from "../../lib/money";
@@ -71,7 +76,7 @@ export function BasketPanel({
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">
                         <span className="mr-1 text-muted-foreground">{line.quantity}×</span>
                         {line.product_name}
@@ -83,20 +88,41 @@ export function BasketPanel({
                             .join(", ")}
                         </p>
                       ) : null}
-                      {line.complimentary_quantity > 0 ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700">
-                          <GiftIcon className="size-3.5 shrink-0" />
-                          <span className="min-w-32 flex-1">{line.quantity - line.complimentary_quantity} berechnet · {line.complimentary_quantity} offeriert ({formatChf(line.complimentary_value)})</span>
-                          <Button className="h-7 shrink-0 px-2 text-xs" onClick={() => onUndoOfferLine(line.id)} size="sm" variant="ghost">
-                            <RotateCcwIcon className="size-3.5" /> Zurück
-                          </Button>
-                        </div>
-                      ) : null}
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                       {formatChf(line.line_total)}
                     </p>
                   </div>
+                  {line.complimentary_quantity > 0 ? (
+                    <Collapsible className="mt-2 w-full rounded-md bg-fuchsia-50 px-4 py-3 text-fuchsia-700">
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="group flex w-full items-center justify-between gap-2 text-left text-sm font-semibold"
+                          aria-label={`Offerierte Menge für ${line.product_name} anzeigen`}
+                        >
+                          <span>
+                            <strong>{line.quantity - line.complimentary_quantity}</strong> verr. |{" "}
+                            <strong>{line.complimentary_quantity}</strong> off.
+                          </span>
+                          <ChevronDownIcon
+                            aria-hidden="true"
+                            className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180"
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-1.5">
+                        <Button
+                          className="h-12 w-full px-2 text-sm"
+                          onClick={() => onUndoOfferLine(line.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <RotateCcwIcon /> Zurück
+                        </Button>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ) : null}
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
@@ -109,7 +135,7 @@ export function BasketPanel({
                     </Button>
                     <Button
                       variant="outline"
-                      className="h-11 w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      className="h-11 w-full border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100"
                       disabled={line.complimentary_quantity >= line.quantity}
                       aria-label={`${line.product_name} einmal offerieren`}
                       onClick={() => onOfferLine(line.id)}
